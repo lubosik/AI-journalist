@@ -5,6 +5,7 @@ export interface EditionState {
   currentEdition: number
   nextPublishDate: string | null
   editionLockedAfter: string | null
+  lastDraftDate: string | null
   loading: boolean
 }
 
@@ -13,25 +14,35 @@ export function useEditionState() {
     currentEdition: 0,
     nextPublishDate: null,
     editionLockedAfter: null,
+    lastDraftDate: null,
     loading: true,
   })
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
-        .from('pipeline_state')
-        .select('key, value')
-        .in('key', ['current_edition_number', 'next_publish_date', 'edition_locked_after'])
-      if (data) {
-        setState({
-          currentEdition: parseInt(data.find((r: { key: string; value: string }) => r.key === 'current_edition_number')?.value || '0'),
-          nextPublishDate: data.find((r: { key: string; value: string }) => r.key === 'next_publish_date')?.value || null,
-          editionLockedAfter: data.find((r: { key: string; value: string }) => r.key === 'edition_locked_after')?.value || null,
-          loading: false,
-        })
-      } else {
-        setState(prev => ({ ...prev, loading: false }))
-      }
+      const [psRes, draftRes] = await Promise.all([
+        supabase
+          .from('pipeline_state')
+          .select('key, value')
+          .in('key', ['current_edition_number', 'next_publish_date', 'edition_locked_after']),
+        supabase
+          .from('newsletter_issues')
+          .select('created_at')
+          .in('status', ['draft', 'approved', 'published'])
+          .order('created_at', { ascending: false })
+          .limit(1),
+      ])
+
+      const ps = psRes.data || []
+      const lastDraft = draftRes.data?.[0]?.created_at || null
+
+      setState({
+        currentEdition: parseInt(ps.find((r: { key: string; value: string }) => r.key === 'current_edition_number')?.value || '0'),
+        nextPublishDate: ps.find((r: { key: string; value: string }) => r.key === 'next_publish_date')?.value || null,
+        editionLockedAfter: ps.find((r: { key: string; value: string }) => r.key === 'edition_locked_after')?.value || null,
+        lastDraftDate: lastDraft,
+        loading: false,
+      })
     }
     fetch()
   }, [])

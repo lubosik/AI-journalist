@@ -31,7 +31,7 @@ function getWindow(lockedAfter: string | null, publishDate: string | null): stri
 }
 
 export function EditionStatusCard() {
-  const { currentEdition, nextPublishDate, editionLockedAfter, loading } = useEditionState()
+  const { currentEdition, nextPublishDate, editionLockedAfter, lastDraftDate, loading } = useEditionState()
 
   if (loading) {
     return (
@@ -88,10 +88,12 @@ export function EditionStatusCard() {
             </span>
           </div>
         )}
-        {draftDate && (
+        {lastDraftDate && (
           <div className="flex justify-between">
-            <span className="text-text-muted">Draft deadline</span>
-            <span className="font-mono text-text-warm text-xs">{draftDate}, 6pm ET</span>
+            <span className="text-text-muted">Last draft done</span>
+            <span className="font-mono text-text-warm text-xs">
+              {new Date(lastDraftDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+            </span>
           </div>
         )}
       </div>
