@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { ActivityEvent } from '@/types/herald'
 
@@ -8,6 +8,9 @@ function genId() { return Math.random().toString(36).substr(2, 9) }
 export function useActivityFeed(limit = 50) {
   const [events, setEvents] = useState<ActivityEvent[]>([])
   const [loading, setLoading] = useState(true)
+  // Unique channel name per hook instance prevents collision when multiple
+  // components subscribe simultaneously (Sidebar + MobileNav + activity page)
+  const channelName = useRef(`herald-activity-${genId()}`)
 
   const addEvent = useCallback((event: ActivityEvent) => {
     setEvents(prev => [event, ...prev].slice(0, 100))
@@ -40,7 +43,7 @@ export function useActivityFeed(limit = 50) {
     }
     loadInitial()
 
-    const channel = supabase.channel('herald-activity')
+    const channel = supabase.channel(channelName.current)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'content_items' }, (payload) => {
         const item = payload.new as Record<string, unknown>
         addEvent({ id: genId(), type: 'INGESTION', message: `Ingested: ${(item.title as string) || (item.source_name as string) || 'new item'}`, source: item.source_type as string, timestamp: (item.scraped_at as string) || new Date().toISOString() })

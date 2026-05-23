@@ -1,13 +1,10 @@
-import withPWA from 'next-pwa'
+import withPWA from '@ducanh2912/next-pwa'
 
-const pwaConfig = withPWA({
+const withPWAConfig = withPWA({
   dest: 'public',
-  register: true,
-  skipWaiting: true,
+  cacheOnFrontEndNav: true,
+  reloadOnOnline: true,
   disable: process.env.NODE_ENV === 'development',
-  buildExcludes: [/middleware-manifest\.json$/],
 })
 
-const nextConfig = {}
-
-export default pwaConfig(nextConfig)
+export default withPWAConfig({})
