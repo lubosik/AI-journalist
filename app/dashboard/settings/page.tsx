@@ -49,7 +49,7 @@ export default function SettingsPage() {
           <h2 className="font-serif text-xl text-text-warm mb-6">Pipeline Controls</h2>
           <div className="space-y-4">
             {[
-              { key: 'pipeline_paused', label: 'Pause Pipeline' },
+              { key: 'paused', label: 'Pause Pipeline' },
               { key: 'newsletter_paused', label: 'Pause Newsletter' },
             ].map(({ key, label }) => {
               const isOn = ps[key] === 'true'

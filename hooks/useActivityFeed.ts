@@ -35,7 +35,7 @@ export function useActivityFeed(limit = 50) {
         initial.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         setEvents(initial.slice(0, limit))
       } catch (err) {
-        void err
+        console.error('[useActivityFeed] load error:', err)
       } finally { setLoading(false) }
     }
     loadInitial()

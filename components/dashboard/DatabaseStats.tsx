@@ -41,7 +41,8 @@ export function DatabaseStats() {
           publishedEditions: editions.count || 0,
           loading: false,
         })
-      } catch {
+      } catch (err) {
+        console.error('[DatabaseStats] load error:', err)
         setStats(prev => ({ ...prev, loading: false }))
       }
     }

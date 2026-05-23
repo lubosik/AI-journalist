@@ -27,14 +27,22 @@ export default function EditionPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Preview')
   const [editMode, setEditMode] = useState(false)
 
+  function parseIssue(data: Record<string, unknown>): NewsletterIssue {
+    const sections = typeof data.sections === 'string'
+      ? (() => { try { return JSON.parse(data.sections as string) } catch { return [] } })()
+      : (data.sections || [])
+    return { ...data, sections } as unknown as NewsletterIssue
+  }
+
   useEffect(() => {
     supabase
       .from('newsletter_issues')
       .select('*')
       .eq('id', id)
       .single()
-      .then(({ data }) => {
-        if (data) setIssue(data as NewsletterIssue)
+      .then(({ data, error }) => {
+        if (error) toast.error(`Failed to load edition: ${error.message}`)
+        if (data) setIssue(parseIssue(data as Record<string, unknown>))
         setLoading(false)
       })
 
@@ -43,7 +51,7 @@ export default function EditionPage() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'newsletter_issues', filter: `id=eq.${id}` },
-        (payload) => setIssue(payload.new as NewsletterIssue)
+        (payload) => setIssue(parseIssue(payload.new as Record<string, unknown>))
       )
       .subscribe()
 
