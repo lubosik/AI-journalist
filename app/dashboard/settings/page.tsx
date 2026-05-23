@@ -2,11 +2,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function SettingsPage() {
   const [ps, setPs] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [showApiKey, setShowApiKey] = useState(false)
 
   useEffect(() => {
     supabase.from('pipeline_state').select('key, value').then(({ data }) => {
@@ -117,7 +119,7 @@ export default function SettingsPage() {
           <div className="space-y-4">
             {[
               { key: 'current_edition_number', label: 'Current Edition Number', type: 'number' },
-              { key: 'next_publish_date', label: 'Next Publish Date', type: 'date' },
+              { key: 'next_publish_date', label: 'Next Deadline (Sunday)', type: 'date' },
             ].map(({ key, label, type }) => (
               <div key={key}>
                 <label className="block text-text-muted text-xs tracking-widest uppercase mb-2">{label}</label>
@@ -138,21 +140,88 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
+            {/* Edition Lock Time */}
+            <div>
+              <label className="block text-text-muted text-xs tracking-widest uppercase mb-2">
+                Edition Lock Time (ISO datetime)
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={ps['edition_locked_after'] || ''}
+                  onChange={e => setPs(prev => ({ ...prev, edition_locked_after: e.target.value }))}
+                  placeholder="e.g. 2026-05-25T18:00:00"
+                  className="flex-1 min-w-0 bg-bg-elevated border border-border-dark rounded px-3 py-2 text-text-warm text-sm font-mono focus:outline-none focus:border-gold-muted placeholder-text-muted"
+                />
+                <button
+                  onClick={() => save('edition_locked_after')}
+                  disabled={saving}
+                  className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px] shrink-0"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Beehiiv Publishing */}
+        {/* Beehiiv API */}
         <div className="card p-6">
-          <h2 className="font-serif text-xl text-text-warm mb-4">Beehiiv Publishing</h2>
-          <div className="p-4 bg-bg-elevated rounded border border-gold-muted">
-            <p className="text-text-secondary text-sm">
-              Publishing requires manual approval in the Beehiiv dashboard.
-            </p>
-            <p className="text-text-muted text-xs mt-2">
-              When a draft is approved here, the HTML is saved. Copy it from the edition page
-              and paste into Beehiiv to create or update your draft. Publishing is a manual
-              step in Beehiiv for full control.
-            </p>
+          <h2 className="font-serif text-xl text-text-warm mb-6">Beehiiv API</h2>
+          <div className="space-y-4">
+            {/* API Key */}
+            <div>
+              <label className="block text-text-muted text-xs tracking-widest uppercase mb-2">
+                Beehiiv API Key
+              </label>
+              <div className="flex gap-3">
+                <div className="relative flex-1 min-w-0">
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    value={ps['beehiiv_api_key'] || ''}
+                    onChange={e => setPs(prev => ({ ...prev, beehiiv_api_key: e.target.value }))}
+                    placeholder="••••••••••••••••"
+                    className="w-full bg-bg-elevated border border-border-dark rounded px-3 py-2 pr-10 text-text-warm text-sm font-mono focus:outline-none focus:border-gold-muted placeholder-text-muted"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(s => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors p-1"
+                  >
+                    {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <button
+                  onClick={() => save('beehiiv_api_key')}
+                  disabled={saving}
+                  className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px] shrink-0"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+            {/* Publication ID */}
+            <div>
+              <label className="block text-text-muted text-xs tracking-widest uppercase mb-2">
+                Publication ID
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={ps['beehiiv_publication_id'] || ''}
+                  onChange={e => setPs(prev => ({ ...prev, beehiiv_publication_id: e.target.value }))}
+                  placeholder="pub_xxxxxxxx"
+                  className="flex-1 min-w-0 bg-bg-elevated border border-border-dark rounded px-3 py-2 text-text-warm text-sm font-mono focus:outline-none focus:border-gold-muted placeholder-text-muted"
+                />
+                <button
+                  onClick={() => save('beehiiv_publication_id')}
+                  disabled={saving}
+                  className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px] shrink-0"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

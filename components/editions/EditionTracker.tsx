@@ -249,7 +249,7 @@ export default function EditionTracker({
   issueId,
   editionNumber,
 }: {
-  issueId: string
+  issueId?: string
   editionNumber: number
 }) {
   const [items, setItems] = useState<ContentItem[]>([])
@@ -258,18 +258,36 @@ export default function EditionTracker({
   const [view, setView] = useState<'grouped' | 'timeline'>('grouped')
   const [addingTopic, setAddingTopic] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [rebuilding, setRebuilding] = useState(false)
 
-  // Fetch on mount and when showRemoved changes
+  // Fetch on mount and when showRemoved / editionNumber changes
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/editions/${issueId}/content?include_removed=${showRemoved}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.all) setItems(data.all as ContentItem[])
+    if (issueId) {
+      fetch(`/api/editions/${issueId}/content?include_removed=${showRemoved}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.all) setItems(data.all as ContentItem[])
+          setLoading(false)
+        })
+        .catch(() => { toast.error('Failed to load content'); setLoading(false) })
+    } else {
+      // No issue yet — load directly from edition_content by edition_number
+      let query = supabase
+        .from('edition_content')
+        .select('*')
+        .eq('edition_number', editionNumber)
+        .order('created_at', { ascending: true })
+      if (!showRemoved) {
+        query = query.eq('removed', false)
+      }
+      query.then(({ data, error }) => {
+        if (error) { toast.error('Failed to load content'); setLoading(false); return }
+        setItems((data || []) as ContentItem[])
         setLoading(false)
       })
-      .catch(() => { toast.error('Failed to load content'); setLoading(false) })
-  }, [issueId, showRemoved])
+    }
+  }, [issueId, editionNumber, showRemoved])
 
   // Realtime subscription
   useEffect(() => {
@@ -303,18 +321,29 @@ export default function EditionTracker({
     // Optimistic update
     setItems(prev => prev.map(i => i.id === contentId ? { ...i, removed: true, removed_at: new Date().toISOString() } : i))
     try {
-      const res = await fetch(`/api/editions/${issueId}/content`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_id: contentId }),
-      })
-      if (!res.ok) {
-        // Revert on failure
-        setItems(prev => prev.map(i => i.id === contentId ? { ...i, removed: false, removed_at: undefined } : i))
-        toast.error('Failed to remove item')
+      if (issueId) {
+        const res = await fetch(`/api/editions/${issueId}/content`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content_id: contentId }),
+        })
+        if (!res.ok) {
+          setItems(prev => prev.map(i => i.id === contentId ? { ...i, removed: false, removed_at: undefined } : i))
+          toast.error('Failed to remove item')
+          return
+        }
       } else {
-        toast.success('Item removed')
+        const { error } = await supabase
+          .from('edition_content')
+          .update({ removed: true, removed_at: new Date().toISOString(), removed_reason: 'Removed from dashboard' })
+          .eq('id', contentId)
+        if (error) {
+          setItems(prev => prev.map(i => i.id === contentId ? { ...i, removed: false, removed_at: undefined } : i))
+          toast.error('Failed to remove item')
+          return
+        }
       }
+      toast.success('Item removed')
     } catch {
       setItems(prev => prev.map(i => i.id === contentId ? { ...i, removed: false, removed_at: undefined } : i))
       toast.error('Failed to remove item')
@@ -341,20 +370,46 @@ export default function EditionTracker({
     }
   }
 
+  const triggerRebuild = () => {
+    if (!issueId) return
+    fetch(`/api/editions/${issueId}/rebuild-html`, { method: 'POST' }).catch(() => {})
+  }
+
+  const handleRebuild = async () => {
+    if (!issueId) return
+    setRebuilding(true)
+    try {
+      const res = await fetch(`/api/editions/${issueId}/rebuild-html`, { method: 'POST' })
+      if (res.ok) {
+        toast.success('Rebuild queued — check Telegram in ~30s')
+      } else {
+        toast.error('Rebuild failed')
+      }
+    } catch {
+      toast.error('Rebuild failed')
+    } finally {
+      setRebuilding(false)
+    }
+  }
+
   const handleAddTopic = async (topic: string, topicType: string) => {
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/editions/${issueId}/content`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, topic_type: topicType }),
-      })
-      if (!res.ok) {
-        const json = await res.json()
-        toast.error(json.error || 'Failed to add topic')
-      } else {
+      if (issueId) {
+        const res = await fetch(`/api/editions/${issueId}/content`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic, topic_type: topicType }),
+        })
+        if (!res.ok) {
+          const json = await res.json()
+          toast.error(json.error || 'Failed to add topic')
+          return
+        }
         toast.success('Topic added')
         setAddingTopic(false)
+        // Fire-and-forget rebuild
+        triggerRebuild()
         // Realtime will push the new item; if not, re-fetch
         setTimeout(() => {
           fetch(`/api/editions/${issueId}/content?include_removed=${showRemoved}`)
@@ -362,6 +417,34 @@ export default function EditionTracker({
             .then(data => { if (data.all) setItems(data.all as ContentItem[]) })
             .catch(() => {})
         }, 800)
+      } else {
+        // No issue yet — write directly to edition_content via Supabase
+        const { data: week } = await supabase
+          .from('edition_weeks')
+          .select('week_start, week_end')
+          .eq('edition_number', editionNumber)
+          .single()
+        const { error } = await supabase.from('edition_content').insert({
+          edition_number: editionNumber,
+          week_start: week?.week_start || new Date().toISOString().split('T')[0],
+          week_end: week?.week_end || new Date().toISOString().split('T')[0],
+          content_type: topicType || 'topic',
+          title: topic.substring(0, 100),
+          body: topic,
+          priority: 5,
+          added_by: 'dashboard',
+        })
+        if (error) {
+          toast.error('Failed to add topic')
+          return
+        }
+        toast.success('Topic added')
+        setAddingTopic(false)
+        // Re-fetch
+        const query = showRemoved
+          ? supabase.from('edition_content').select('*').eq('edition_number', editionNumber).order('created_at', { ascending: true })
+          : supabase.from('edition_content').select('*').eq('edition_number', editionNumber).eq('removed', false).order('created_at', { ascending: true })
+        query.then(({ data }) => { if (data) setItems(data as ContentItem[]) })
       }
     } catch {
       toast.error('Failed to add topic')
@@ -438,6 +521,17 @@ export default function EditionTracker({
         >
           {showRemoved ? 'Hide Removed' : 'Show Removed'}
         </button>
+
+        {/* Rebuild draft */}
+        {issueId && !addingTopic && (
+          <button
+            onClick={handleRebuild}
+            disabled={rebuilding}
+            className="px-3 py-2 text-xs tracking-widest uppercase rounded border border-border-dark text-text-muted hover:border-gold-muted hover:text-text-secondary transition-all min-h-[44px] disabled:opacity-40"
+          >
+            {rebuilding ? 'Rebuilding...' : 'Rebuild Draft'}
+          </button>
+        )}
 
         {/* Add topic */}
         {!addingTopic && (

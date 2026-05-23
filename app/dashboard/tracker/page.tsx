@@ -76,10 +76,8 @@ export default function TrackerPage() {
       }))
       setEditions(withCounts)
 
-      // Auto-select the first (most recent) edition that has an issue
-      const firstWithIssue = withCounts.find(w => idMap[w.edition_number])
-      if (firstWithIssue) setSelectedEdition(firstWithIssue.edition_number)
-      else if (withCounts.length > 0) setSelectedEdition(withCounts[0].edition_number)
+      // Auto-select the most recent edition
+      if (withCounts.length > 0) setSelectedEdition(withCounts[0].edition_number)
 
       setLoadingEditions(false)
     })
@@ -111,7 +109,19 @@ export default function TrackerPage() {
   const selectedIssueId = selectedEdition ? issueIds[selectedEdition] : undefined
 
   function formatWeek(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    const [y, m, d] = dateStr.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  }
+
+  function formatEditionRange(weekStart: string, weekEnd: string) {
+    const [sy, sm, sd] = weekStart.split('-').map(Number)
+    const [ey, em, ed] = weekEnd.split('-').map(Number)
+    const startDate = new Date(sy, sm - 1, sd)
+    // publish date is week_end + 1 day
+    const endDate = new Date(ey, em - 1, ed + 1)
+    const startStr = startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    const endStr = endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    return `${startStr}–${endStr}`
   }
 
   const selectedEditionData = editions.find(e => e.edition_number === selectedEdition)
@@ -126,7 +136,7 @@ export default function TrackerPage() {
         >
           <span>
             {selectedEditionData
-              ? `Edition ${selectedEditionData.edition_number} — Week of ${formatWeek(selectedEditionData.week_start)}`
+              ? `Edition ${selectedEditionData.edition_number} — ${formatEditionRange(selectedEditionData.week_start, selectedEditionData.week_end)}`
               : 'Select Edition'}
           </span>
           <span className="text-text-muted text-xs ml-2">{sidebarOpen ? '▲' : '▼'}</span>
@@ -190,7 +200,6 @@ export default function TrackerPage() {
           ) : (
             editions.map(ed => {
               const isActive = selectedEdition === ed.edition_number
-              const hasIssue = !!issueIds[ed.edition_number]
               return (
                 <button
                   key={ed.edition_number}
@@ -212,9 +221,6 @@ export default function TrackerPage() {
                   <p className="text-[11px] text-text-muted mt-0.5">
                     Week of {formatWeek(ed.week_start)}
                   </p>
-                  {!hasIssue && (
-                    <p className="text-[10px] text-text-muted italic mt-0.5">No draft yet</p>
-                  )}
                 </button>
               )
             })
@@ -284,22 +290,20 @@ export default function TrackerPage() {
             </div>
           )}
 
-          {/* EditionTracker or no-issue placeholder */}
+          {/* EditionTracker */}
           {!searchQuery.trim() && (
             <>
               {selectedEdition === null ? (
                 <div className="card p-12 text-center text-text-muted">
                   <p>Select an edition above.</p>
                 </div>
-              ) : !selectedIssueId ? (
-                <div className="card p-12 text-center text-text-muted">
-                  <p className="font-serif text-text-secondary mb-2">Edition {selectedEdition}</p>
-                  <p className="text-sm">No draft for this edition yet.</p>
-                  <p className="text-xs mt-2">A draft will appear here once the pipeline generates one.</p>
-                </div>
               ) : (
                 <div>
-                  <h2 className="font-serif text-xl text-gold mb-4">Edition {selectedEdition}</h2>
+                  <h2 className="font-serif text-xl text-gold mb-4">
+                    {selectedEditionData
+                      ? `Edition ${selectedEdition} — ${formatEditionRange(selectedEditionData.week_start, selectedEditionData.week_end)}`
+                      : `Edition ${selectedEdition}`}
+                  </h2>
                   <EditionTracker issueId={selectedIssueId} editionNumber={selectedEdition} />
                 </div>
               )}
