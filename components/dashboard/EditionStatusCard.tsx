@@ -52,11 +52,23 @@ export function EditionStatusCard() {
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   })() : null
 
+  const weekOf = nextPublishDate ? (() => {
+    // Week starts on the Monday before (or on) the publish date
+    const d = new Date(nextPublishDate)
+    const dow = d.getDay() // 0=Sun
+    const monday = new Date(d)
+    monday.setDate(d.getDate() - ((dow === 0 ? 7 : dow) - 1))
+    return monday.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+  })() : null
+
   return (
     <div className="card p-6">
       <div className="mb-6">
         <p className="text-text-muted text-xs tracking-widest uppercase mb-1">Current Edition</p>
         <h2 className="font-serif text-5xl text-gold">EDITION {toRoman(currentEdition)}</h2>
+        {weekOf && (
+          <p className="text-text-muted text-xs mt-2">Week of {weekOf}</p>
+        )}
       </div>
       <div className="mb-4">
         <StatusBadge status={statusMap[window_] || 'research'} />
@@ -72,13 +84,13 @@ export function EditionStatusCard() {
           <div className="flex justify-between">
             <span className="text-text-muted">Publish date</span>
             <span className="font-mono text-text-warm text-xs">
-              {new Date(nextPublishDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {new Date(nextPublishDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
             </span>
           </div>
         )}
         {draftDate && (
           <div className="flex justify-between">
-            <span className="text-text-muted">Draft opens</span>
+            <span className="text-text-muted">Draft deadline</span>
             <span className="font-mono text-text-warm text-xs">{draftDate}, 6pm ET</span>
           </div>
         )}

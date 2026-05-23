@@ -35,7 +35,9 @@ export default function EditionPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [savingSection, setSavingSection] = useState<string | null>(null)
+  const [rebuilding, setRebuilding] = useState(false)
   const sectionRefs = useRef<Record<string, string>>({})
+  const sectionDirtyRef = useRef<Record<string, string>>({})
 
   function parseIssue(data: Record<string, unknown>): NewsletterIssue {
     const sections = typeof data.sections === 'string'
@@ -100,8 +102,8 @@ export default function EditionPage() {
     }
   }
 
-  const saveSection = async (sectionId: string, content: string) => {
-    if (!issue) return
+  const saveSection = async (sectionId: string, content: string): Promise<boolean> => {
+    if (!issue) return false
     setSavingSection(sectionId)
     const updatedSections = (issue.sections || []).map(s =>
       s.id === sectionId ? { ...s, content } : s
@@ -111,9 +113,40 @@ export default function EditionPage() {
       .update({ sections: updatedSections })
       .eq('id', issue.id)
     setSavingSection(null)
-    if (error) { toast.error('Save failed'); return }
+    if (error) { toast.error('Save failed'); return false }
     setIssue(prev => prev ? { ...prev, sections: updatedSections } : null)
-    toast.success('Section saved')
+    delete sectionDirtyRef.current[sectionId]
+    return true
+  }
+
+  const rebuildHTML = async () => {
+    if (!issue) return
+    // Merge ALL dirty edits into one DB write to avoid snapshot-overwrite races
+    const dirtyEntries = Object.entries(sectionDirtyRef.current)
+    if (dirtyEntries.length > 0) {
+      const mergedSections = (issue.sections || []).map(s =>
+        sectionDirtyRef.current[s.id] !== undefined
+          ? { ...s, content: sectionDirtyRef.current[s.id] }
+          : s
+      )
+      const { error } = await supabase
+        .from('newsletter_issues')
+        .update({ sections: mergedSections })
+        .eq('id', issue.id)
+      if (error) { toast.error('Could not save sections — rebuild aborted'); return }
+      setIssue(prev => prev ? { ...prev, sections: mergedSections } : null)
+      sectionDirtyRef.current = {}
+    }
+    setRebuilding(true)
+    try {
+      const res = await fetch(`/api/editions/${issue.id}/rebuild-html`, { method: 'POST' })
+      if (!res.ok) { toast.error('Rebuild failed'); return }
+      toast.success('Rebuilding preview — updates in ~30 seconds')
+    } catch {
+      toast.error('Rebuild request failed')
+    } finally {
+      setRebuilding(false)
+    }
   }
 
   const saveRawHTML = async (html: string) => {
@@ -239,7 +272,16 @@ export default function EditionPage() {
       {/* TAB 2: Edit Content */}
       {activeTab === 'Edit Content' && (
         <div className="space-y-4">
-          <p className="text-text-muted text-xs mb-4">Edit section content directly. Changes auto-save on blur.</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-text-muted text-xs">Edit section content. Press Save &amp; Rebuild to update the preview.</p>
+            <button
+              onClick={rebuildHTML}
+              disabled={rebuilding}
+              className="bg-gold text-bg-primary px-5 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40"
+            >
+              {rebuilding ? 'Queuing...' : 'Save & Rebuild Preview'}
+            </button>
+          </div>
           {(issue.sections || []).map((section, idx) => (
             <div key={section.id || idx} className="card p-6">
               <div className="flex items-center justify-between mb-3">
@@ -260,14 +302,17 @@ export default function EditionPage() {
                 className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
                 rows={8}
                 defaultValue={section.content || ''}
-                onFocus={(e) => { sectionRefs.current[section.id] = e.target.value }}
+                onChange={(e) => { sectionDirtyRef.current[section.id] = e.target.value }}
                 onBlur={(e) => {
                   const newVal = e.target.value
-                  const oldVal = sectionRefs.current[section.id]
-                  if (newVal !== oldVal) {
+                  const orig = sectionRefs.current[section.id]
+                  if (newVal !== orig) {
                     saveSection(section.id, newVal)
+                    // sectionDirtyRef is cleared by saveSection only on success,
+                    // so failed saves remain tracked for retry via Save & Rebuild
                   }
                 }}
+                onFocus={(e) => { sectionRefs.current[section.id] = e.target.value }}
               />
             </div>
           ))}

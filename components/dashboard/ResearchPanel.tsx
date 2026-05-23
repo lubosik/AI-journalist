@@ -32,9 +32,9 @@ export default function ResearchPanel() {
 
   return (
     <div className="card p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4">
         <h3 className="font-serif text-xl text-text-warm">Research</h3>
-        <span className="text-text-muted text-xs">Results delivered to Telegram</span>
+        <p className="text-text-muted text-xs mt-1">Results delivered to Telegram</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-3">
         <input
