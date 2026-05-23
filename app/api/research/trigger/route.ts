@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: Request) {
   const cookie = cookies().get('herald_auth')
-  if (!cookie || cookie.value !== process.env.DASHBOARD_PASSWORD) {
+  if (!cookie || cookie.value !== 'authenticated') {
     return Response.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
