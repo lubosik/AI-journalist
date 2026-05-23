@@ -27,14 +27,14 @@ export function useEditionState() {
           .in('key', ['current_edition_number', 'next_publish_date', 'edition_locked_after']),
         supabase
           .from('newsletter_issues')
-          .select('created_at')
+          .select('updated_at')
           .in('status', ['draft', 'approved', 'published'])
-          .order('created_at', { ascending: false })
+          .order('updated_at', { ascending: false })
           .limit(1),
       ])
 
       const ps = psRes.data || []
-      const lastDraft = draftRes.data?.[0]?.created_at || null
+      const lastDraft = draftRes.data?.[0]?.updated_at || null
 
       setState({
         currentEdition: parseInt(ps.find((r: { key: string; value: string }) => r.key === 'current_edition_number')?.value || '0'),

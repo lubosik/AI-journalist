@@ -119,6 +119,16 @@ export default function EditionPage() {
     if (error) { toast.error('Save failed'); return false }
     setIssue(prev => prev ? { ...prev, sections: updatedSections } : null)
     delete sectionDirtyRef.current[sectionId]
+    // Track the edit in edition_content (fire-and-forget)
+    fetch(`/api/editions/${issue.id}/content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: `Section edit: ${sectionId} — ${content.slice(0, 80)}`,
+        topic_type: 'draft_edit',
+        priority: 6,
+      }),
+    }).catch(() => {})
     return true
   }
 

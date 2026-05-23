@@ -30,15 +30,16 @@ function nextSunday(from: Date): Date {
   return d
 }
 
-function getDaysUntil(dateStr: string | null) {
-  if (!dateStr) return null
-  return Math.ceil((parseLocalDate(dateStr).getTime() - Date.now()) / 86400000)
+function getDaysUntilTs(ts: Date): number {
+  return Math.ceil((ts.getTime() - Date.now()) / 86400000)
 }
 
-function formatDeadline(dateStr: string): string {
-  return parseLocalDate(dateStr).toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric',
-  })
+// Format the lock timestamp as "Sunday, 24 May — 6:00 PM"
+function formatDeadlineTs(ts: Date): string {
+  const day = ts.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const time = ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
+    .replace('am', 'AM').replace('pm', 'PM')
+  return `${day} — ${time}`
 }
 
 function getWindow(lockedAfter: string | null, deadlineDate: string | null): string {
@@ -78,28 +79,26 @@ export function EditionStatusCard() {
   const deadlinePassed = lockTime ? now > lockTime : false
   const displayEdition = deadlinePassed ? currentEdition + 1 : currentEdition
 
-  // Next deadline is the Sunday after the current one
-  const nextDeadline = deadlineDate
-    ? (() => {
-        const d = parseLocalDate(deadlineDate)
-        if (deadlinePassed) {
-          return nextSunday(new Date(d.getTime() + 7 * 86400000))
-        }
-        return d
-      })()
-    : null
+  // Current lock time — the actual Sunday 6pm deadline
+  // When deadline passed, compute the NEXT Sunday 6pm by adding 7 days
+  const currentLockTime = lockTime
+  const nextLockTime: Date | null = (() => {
+    if (!currentLockTime) return null
+    if (deadlinePassed) {
+      return new Date(currentLockTime.getTime() + 7 * 86400000)
+    }
+    return currentLockTime
+  })()
 
-  const days = nextDeadline ? getDaysUntil(nextDeadline.toISOString().slice(0, 10)) : null
+  const days = nextLockTime ? getDaysUntilTs(nextLockTime) : null
   const window_ = getWindow(editionLockedAfter, deadlineDate)
 
-  // Week of label: Monday before the deadline Sunday
-  const weekOf = nextDeadline
+  // Week of label: Sunday that starts the current edition's research week
+  const weekOf = nextLockTime
     ? (() => {
-        const d = new Date(nextDeadline)
-        const dow = d.getDay()
-        const monday = new Date(d)
-        monday.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1))
-        return monday.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+        // The research week starts 7 days before the Sunday deadline
+        const weekStart = new Date(nextLockTime.getTime() - 7 * 86400000)
+        return weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
       })()
     : null
 
@@ -130,28 +129,28 @@ export function EditionStatusCard() {
             <span className="font-mono text-text-warm">{days > 0 ? days : 'Today'}</span>
           </div>
         )}
-        {nextDeadline && (
-          <div className="flex justify-between">
-            <span className="text-text-muted">
+        {nextLockTime && (
+          <div className="flex justify-between gap-4">
+            <span className="text-text-muted shrink-0">
               {deadlinePassed ? 'Next deadline' : 'Deadline'}
             </span>
-            <span className="font-mono text-text-warm text-xs">
-              {formatDeadline(nextDeadline.toISOString().slice(0, 10))}
+            <span className="font-mono text-text-warm text-xs text-right">
+              {formatDeadlineTs(nextLockTime)}
             </span>
           </div>
         )}
         {lastDraftDate && (
           <div className="flex justify-between">
-            <span className="text-text-muted">Last draft done</span>
+            <span className="text-text-muted">Last draft</span>
             <span className="font-mono text-text-warm text-xs">
-              {parseLocalDate(lastDraftDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              {new Date(lastDraftDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
             </span>
           </div>
         )}
         {deadlinePassed && (
           <div className="flex justify-between">
-            <span className="text-text-muted">Edition {toRoman(currentEdition)} deadline</span>
-            <span className="font-mono text-success-dark text-xs">Passed</span>
+            <span className="text-text-muted">Edition {toRoman(currentEdition)}</span>
+            <span className="font-mono text-success-dark text-xs">Deadline passed</span>
           </div>
         )}
       </div>
