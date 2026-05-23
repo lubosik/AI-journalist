@@ -143,8 +143,12 @@ export default function EditionPage() {
     setRebuilding(true)
     try {
       const res = await fetch(`/api/editions/${issue.id}/rebuild-html`, { method: 'POST' })
-      if (!res.ok) { toast.error('Rebuild failed'); return }
-      toast.success('Rebuilding preview — updates in ~30 seconds')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(`Rebuild failed: ${body.error ?? res.status}`)
+        return
+      }
+      toast.success('Rebuild queued — check Telegram in ~30s')
     } catch {
       toast.error('Rebuild request failed')
     } finally {

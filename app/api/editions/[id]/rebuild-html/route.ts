@@ -10,9 +10,10 @@ export async function POST(
     return Response.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
+  // Fall back to anon key so rebuild works even if SERVICE_KEY is not set
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
+    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
   // Verify edition exists
@@ -23,16 +24,19 @@ export async function POST(
     .single()
 
   if (error || !data) {
-    return Response.json({ error: 'Edition not found' }, { status: 404 })
+    return Response.json({ error: `Edition not found: ${error?.message ?? 'no row'}` }, { status: 404 })
   }
 
   // Queue rebuild via pipeline_state — Python scheduler picks this up within 30s
   const { error: upsertError } = await supabase
     .from('pipeline_state')
-    .upsert({ key: 'rebuild_html_request', value: JSON.stringify({ edition_id: params.id }) }, { onConflict: 'key' })
+    .upsert(
+      { key: 'rebuild_html_request', value: JSON.stringify({ edition_id: params.id }) },
+      { onConflict: 'key' }
+    )
 
   if (upsertError) {
-    return Response.json({ error: 'Failed to queue rebuild' }, { status: 500 })
+    return Response.json({ error: `Queue failed: ${upsertError.message}` }, { status: 500 })
   }
 
   return Response.json({ queued: true })

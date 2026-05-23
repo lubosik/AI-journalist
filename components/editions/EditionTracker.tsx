@@ -383,7 +383,8 @@ export default function EditionTracker({
       if (res.ok) {
         toast.success('Rebuild queued — check Telegram in ~30s')
       } else {
-        toast.error('Rebuild failed')
+        const body = await res.json().catch(() => ({}))
+        toast.error(`Rebuild failed: ${body.error ?? res.status}`)
       }
     } catch {
       toast.error('Rebuild failed')

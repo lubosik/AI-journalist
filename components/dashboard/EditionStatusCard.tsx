@@ -68,8 +68,14 @@ export function EditionStatusCard() {
   const now = new Date()
   const deadlineDate = nextPublishDate
 
-  // After deadline passes, show next edition info
-  const deadlinePassed = deadlineDate ? now > parseLocalDate(deadlineDate) : false
+  // Deadline passes at the edition lock time (6pm EST Sunday), not midnight.
+  // Use editionLockedAfter if set; fall back to end-of-day on publish date.
+  const lockTime = editionLockedAfter
+    ? new Date(editionLockedAfter)
+    : deadlineDate
+      ? new Date(parseLocalDate(deadlineDate).getTime() + 23 * 3600 * 1000)
+      : null
+  const deadlinePassed = lockTime ? now > lockTime : false
   const displayEdition = deadlinePassed ? currentEdition + 1 : currentEdition
 
   // Next deadline is the Sunday after the current one
