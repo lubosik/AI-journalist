@@ -18,10 +18,19 @@ const toRoman = (n: number) => {
 
 const DELETABLE_STATUSES = ['draft', 'generating']
 
+interface ContentCounts {
+  topics: number
+  deals: number
+  research: number
+}
+
+type ContentCountsMap = Record<number, ContentCounts>
+
 export default function EditionsPage() {
   const [issues, setIssues] = useState<NewsletterIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [contentCounts, setContentCounts] = useState<ContentCountsMap>({})
 
   useEffect(() => {
     supabase
@@ -30,7 +39,31 @@ export default function EditionsPage() {
       .order('issue_number', { ascending: false })
       .limit(20)
       .then(({ data }) => {
-        if (data) setIssues(data as NewsletterIssue[])
+        if (data) {
+          const issues = data as NewsletterIssue[]
+          setIssues(issues)
+
+          // Fetch content counts for these editions
+          const editionNumbers = issues.map(i => i.issue_number)
+          if (editionNumbers.length > 0) {
+            supabase
+              .from('edition_content')
+              .select('edition_number, content_type')
+              .in('edition_number', editionNumbers)
+              .eq('removed', false)
+              .then(({ data: contentData }) => {
+                if (!contentData) return
+                const map: ContentCountsMap = {}
+                contentData.forEach((row: { edition_number: number; content_type: string }) => {
+                  if (!map[row.edition_number]) map[row.edition_number] = { topics: 0, deals: 0, research: 0 }
+                  if (row.content_type === 'topic') map[row.edition_number].topics++
+                  else if (row.content_type === 'deal') map[row.edition_number].deals++
+                  else if (row.content_type === 'research') map[row.edition_number].research++
+                })
+                setContentCounts(map)
+              })
+          }
+        }
         setLoading(false)
       })
   }, [])
@@ -103,6 +136,25 @@ export default function EditionsPage() {
                     <p className="text-text-muted text-xs font-mono">
                       {new Date(issue.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </p>
+                    {contentCounts[issue.issue_number] && (
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {contentCounts[issue.issue_number].topics > 0 && (
+                          <span className="text-[10px] text-text-muted font-mono">
+                            {contentCounts[issue.issue_number].topics} topics
+                          </span>
+                        )}
+                        {contentCounts[issue.issue_number].deals > 0 && (
+                          <span className="text-[10px] text-text-muted font-mono">
+                            {contentCounts[issue.issue_number].deals} deals
+                          </span>
+                        )}
+                        {contentCounts[issue.issue_number].research > 0 && (
+                          <span className="text-[10px] text-text-muted font-mono">
+                            {contentCounts[issue.issue_number].research} research
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </Link>
               </div>

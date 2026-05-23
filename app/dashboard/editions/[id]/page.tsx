@@ -1,10 +1,13 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
 import type { NewsletterIssue } from '@/types/herald'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { toast } from 'sonner'
+
+const EditionTracker = dynamic(() => import('@/components/editions/EditionTracker'), { ssr: false })
 
 const toRoman = (n: number) => {
   const vals = [10, 9, 5, 4, 1]
@@ -16,7 +19,7 @@ const toRoman = (n: number) => {
   return r
 }
 
-const TABS = ['Preview', 'Edit Content', 'Raw HTML', 'Copy & Export'] as const
+const TABS = ['Preview', 'Edit Content', 'Edition Tracker', 'Raw HTML', 'Copy & Export'] as const
 type Tab = typeof TABS[number]
 
 function estimateReadTime(html: string): string {
@@ -322,12 +325,17 @@ export default function EditionPage() {
         </div>
       )}
 
-      {/* TAB 3: Raw HTML */}
+      {/* TAB 3: Edition Tracker */}
+      {activeTab === 'Edition Tracker' && issue && (
+        <EditionTracker issueId={issue.id} editionNumber={issue.issue_number} />
+      )}
+
+      {/* TAB 4: Raw HTML */}
       {activeTab === 'Raw HTML' && (
         <RawHTMLTab issue={issue} onSave={saveRawHTML} />
       )}
 
-      {/* TAB 4: Copy & Export */}
+      {/* TAB 5: Copy & Export */}
       {activeTab === 'Copy & Export' && (
         <div className="space-y-4">
           <div className="card p-6">
