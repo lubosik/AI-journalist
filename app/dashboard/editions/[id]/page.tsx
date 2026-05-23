@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useEffect, useState, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { NewsletterIssue } from '@/types/herald'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -16,16 +16,26 @@ const toRoman = (n: number) => {
   return r
 }
 
-const TABS = ['Preview', 'Sections', 'Raw HTML'] as const
+const TABS = ['Preview', 'Edit Content', 'Raw HTML', 'Copy & Export'] as const
 type Tab = typeof TABS[number]
+
+function estimateReadTime(html: string): string {
+  const words = html.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length
+  const mins = Math.ceil(words / 200)
+  return `~${mins} min read`
+}
 
 export default function EditionPage() {
   const params = useParams()
+  const router = useRouter()
   const id = params.id as string
   const [issue, setIssue] = useState<NewsletterIssue | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('Preview')
-  const [editMode, setEditMode] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [savingSection, setSavingSection] = useState<string | null>(null)
+  const sectionRefs = useRef<Record<string, string>>({})
 
   function parseIssue(data: Record<string, unknown>): NewsletterIssue {
     const sections = typeof data.sections === 'string'
@@ -48,11 +58,8 @@ export default function EditionPage() {
 
     const channel = supabase
       .channel(`issue-${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'newsletter_issues', filter: `id=eq.${id}` },
-        (payload) => setIssue(parseIssue(payload.new as Record<string, unknown>))
-      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'newsletter_issues', filter: `id=eq.${id}` },
+        (payload) => setIssue(parseIssue(payload.new as Record<string, unknown>)))
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -72,10 +79,48 @@ export default function EditionPage() {
   }
 
   const handleDecline = async () => {
-    if (!issue || !confirm('Decline this edition? This cannot be undone.')) return
+    if (!issue || !confirm('Decline this edition?')) return
     const { error } = await supabase.from('newsletter_issues').update({ status: 'declined' }).eq('id', issue.id)
     if (error) { toast.error('Failed to decline'); return }
     toast.success('Edition declined')
+  }
+
+  const handleDelete = async () => {
+    if (!issue) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/editions/${issue.id}/delete`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error || 'Delete failed'); setDeleting(false); return }
+      toast.success('Draft deleted successfully')
+      router.push('/dashboard/editions')
+    } catch {
+      toast.error('Delete failed')
+      setDeleting(false)
+    }
+  }
+
+  const saveSection = async (sectionId: string, content: string) => {
+    if (!issue) return
+    setSavingSection(sectionId)
+    const updatedSections = (issue.sections || []).map(s =>
+      s.id === sectionId ? { ...s, content } : s
+    )
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ sections: updatedSections })
+      .eq('id', issue.id)
+    setSavingSection(null)
+    if (error) { toast.error('Save failed'); return }
+    setIssue(prev => prev ? { ...prev, sections: updatedSections } : null)
+    toast.success('Section saved')
+  }
+
+  const saveRawHTML = async (html: string) => {
+    if (!issue) return
+    const { error } = await supabase.from('newsletter_issues').update({ html_content: html }).eq('id', issue.id)
+    if (error) { toast.error('Save failed'); return }
+    toast.success('HTML saved')
   }
 
   if (loading) {
@@ -88,8 +133,11 @@ export default function EditionPage() {
   }
   if (!issue) return <p className="text-text-muted">Edition not found</p>
 
+  const canDelete = ['draft', 'generating', 'paused', 'declined'].includes(issue.status)
+
   return (
     <div>
+      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="font-serif text-3xl text-gold">EDITION {toRoman(issue.issue_number)}</h1>
@@ -97,42 +145,60 @@ export default function EditionPage() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={issue.status} />
-          {(issue.status === 'draft' || issue.status === 'approved') && (
+          {canDelete && (
             <button
-              onClick={() => setEditMode(!editMode)}
-              className={`text-xs px-3 py-1.5 rounded border tracking-widest uppercase transition-all ${
-                editMode ? 'bg-gold text-bg-primary border-gold' : 'border-gold text-gold'
-              }`}
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-xs px-3 py-1.5 rounded border border-red-900 text-red-700 hover:bg-red-900 hover:text-red-300 tracking-widest uppercase transition-all"
             >
-              {editMode ? 'Viewing' : 'Edit'}
+              Delete
             </button>
           )}
         </div>
       </div>
 
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-bg-secondary border border-border-dark rounded-lg p-8 max-w-sm w-full mx-4">
+            <h3 className="font-serif text-xl text-text-warm mb-3">Delete Edition {issue.issue_number}?</h3>
+            <p className="text-text-muted text-sm mb-6">
+              This removes the draft from the database entirely and cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-900 text-red-200 px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-red-800 transition-all disabled:opacity-40"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
       {issue.status === 'draft' && (
         <div className="flex gap-3 mb-6 flex-wrap">
-          <button
-            onClick={handleApprove}
-            className="bg-gold text-bg-primary px-6 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all"
-          >
-            Approve and Publish
+          <button onClick={handleApprove} className="bg-gold text-bg-primary px-6 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all">
+            Approve
           </button>
-          <button
-            onClick={handleDecline}
-            className="border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-red-900 hover:text-red-800 transition-all"
-          >
+          <button onClick={handleDecline} className="border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-red-900 hover:text-red-800 transition-all">
             Decline
           </button>
-          <button
-            onClick={copyHTML}
-            className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
-          >
+          <button onClick={copyHTML} className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all">
             Copy HTML
           </button>
         </div>
       )}
 
+      {/* Tabs */}
       <div className="flex gap-0 border-b border-border-dark mb-6">
         {TABS.map(tab => (
           <button
@@ -147,15 +213,21 @@ export default function EditionPage() {
         ))}
       </div>
 
+      {/* TAB 1: Preview */}
       {activeTab === 'Preview' && (
         <div className="card overflow-hidden">
           {issue.html_content ? (
-            <iframe srcDoc={issue.html_content} className="w-full h-screen border-0" title="Newsletter preview" />
+            <iframe
+              srcDoc={issue.html_content}
+              className="w-full border-0"
+              style={{ height: '80vh' }}
+              title="Newsletter preview"
+            />
           ) : (
             <div className="p-12 text-center text-text-muted">
-              <p>No HTML preview available</p>
+              <p>No HTML preview available yet.</p>
               {issue.plain_text && (
-                <pre className="mt-4 text-left text-sm text-text-secondary whitespace-pre-wrap font-mono">
+                <pre className="mt-4 text-left text-sm text-text-secondary whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">
                   {issue.plain_text}
                 </pre>
               )}
@@ -164,8 +236,10 @@ export default function EditionPage() {
         </div>
       )}
 
-      {activeTab === 'Sections' && (
+      {/* TAB 2: Edit Content */}
+      {activeTab === 'Edit Content' && (
         <div className="space-y-4">
+          <p className="text-text-muted text-xs mb-4">Edit section content directly. Changes auto-save on blur.</p>
           {(issue.sections || []).map((section, idx) => (
             <div key={section.id || idx} className="card p-6">
               <div className="flex items-center justify-between mb-3">
@@ -177,61 +251,127 @@ export default function EditionPage() {
                   {section.locked && (
                     <span className="text-xs text-gold border border-gold-muted px-2 py-0.5 rounded">LOCKED</span>
                   )}
+                  {savingSection === section.id && (
+                    <span className="text-xs text-gold-muted">Saving...</span>
+                  )}
                 </div>
               </div>
-              <p className="text-text-secondary text-sm line-clamp-3 font-mono">
-                {(section.content || '').slice(0, 300)}
-              </p>
-              {editMode && (
-                <textarea
-                  className="w-full mt-3 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none"
-                  rows={6}
-                  defaultValue={section.content || ''}
-                  onBlur={async (e) => {
-                    if (!issue) return
-                    const updatedSections = (issue.sections || []).map(s =>
-                      s.id === section.id ? { ...s, content: e.target.value } : s
-                    )
-                    await supabase.from('newsletter_issues').update({ sections: updatedSections }).eq('id', issue.id)
-                    toast.success('Saved')
-                  }}
-                />
-              )}
+              <textarea
+                className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+                rows={8}
+                defaultValue={section.content || ''}
+                onFocus={(e) => { sectionRefs.current[section.id] = e.target.value }}
+                onBlur={(e) => {
+                  const newVal = e.target.value
+                  const oldVal = sectionRefs.current[section.id]
+                  if (newVal !== oldVal) {
+                    saveSection(section.id, newVal)
+                  }
+                }}
+              />
             </div>
           ))}
           {(!issue.sections || issue.sections.length === 0) && (
-            <p className="text-text-muted text-center py-12">No sections available</p>
+            <p className="text-text-muted text-center py-12">No sections available.</p>
           )}
         </div>
       )}
 
+      {/* TAB 3: Raw HTML */}
       {activeTab === 'Raw HTML' && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-serif text-text-warm">Raw HTML</h3>
-            <button
-              onClick={copyHTML}
-              className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
-            >
-              Copy HTML
-            </button>
+        <RawHTMLTab issue={issue} onSave={saveRawHTML} />
+      )}
+
+      {/* TAB 4: Copy & Export */}
+      {activeTab === 'Copy & Export' && (
+        <div className="space-y-4">
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-serif text-text-warm mb-1">Export HTML</h3>
+                <p className="text-text-muted text-xs">
+                  {issue.html_content
+                    ? `${issue.html_content.length.toLocaleString()} characters · ${estimateReadTime(issue.html_content)}`
+                    : 'No HTML available'}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={copyHTML}
+                  disabled={!issue.html_content}
+                  className="bg-gold text-bg-primary px-6 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40"
+                >
+                  Copy HTML
+                </button>
+                <button
+                  onClick={() => {
+                    if (!issue.html_content) return
+                    const blob = new Blob([issue.html_content], { type: 'text/html' })
+                    const url = URL.createObjectURL(blob)
+                    window.open(url, '_blank')
+                  }}
+                  disabled={!issue.html_content}
+                  className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40"
+                >
+                  Open in Tab
+                </button>
+              </div>
+            </div>
+            <p className="text-text-muted text-xs mt-4">
+              Note: Publishing requires manual approval in Beehiiv dashboard. Copy HTML and paste into Beehiiv to create a draft.
+            </p>
           </div>
-          <textarea
-            className="w-full h-96 bg-bg-elevated border border-border-dark rounded p-4 text-text-secondary font-mono text-xs focus:outline-none focus:border-gold-muted resize-none"
-            value={issue.html_content || ''}
-            readOnly={!editMode}
-            onChange={(e) => {
-              if (!editMode) return
-              setIssue(prev => prev ? { ...prev, html_content: e.target.value } : null)
-            }}
-            onBlur={async () => {
-              if (!editMode || !issue) return
-              await supabase.from('newsletter_issues').update({ html_content: issue.html_content }).eq('id', issue.id)
-              toast.success('Saved')
-            }}
-          />
+          <div className="card p-6">
+            <h3 className="font-serif text-text-warm mb-3">Plain Text</h3>
+            <pre className="text-text-secondary text-xs font-mono whitespace-pre-wrap max-h-64 overflow-y-auto bg-bg-elevated rounded p-4">
+              {issue.plain_text || 'No plain text available'}
+            </pre>
+            {issue.plain_text && (
+              <button
+                onClick={() => { navigator.clipboard.writeText(issue.plain_text || ''); toast.success('Plain text copied') }}
+                className="mt-3 border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all"
+              >
+                Copy Plain Text
+              </button>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function RawHTMLTab({ issue, onSave }: { issue: NewsletterIssue; onSave: (html: string) => void }) {
+  const [value, setValue] = useState(issue.html_content || '')
+  const [dirty, setDirty] = useState(false)
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-serif text-text-warm">Raw HTML</h3>
+        <div className="flex gap-3">
+          {dirty && (
+            <button
+              onClick={() => { onSave(value); setDirty(false) }}
+              className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all"
+            >
+              Save
+            </button>
+          )}
+          <button
+            onClick={() => { navigator.clipboard.writeText(value); toast.success('Copied') }}
+            className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+      <textarea
+        className="w-full bg-bg-elevated border border-border-dark rounded p-4 text-text-secondary font-mono text-xs focus:outline-none focus:border-gold-muted resize-none"
+        style={{ height: '60vh' }}
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setDirty(true) }}
+      />
     </div>
   )
 }

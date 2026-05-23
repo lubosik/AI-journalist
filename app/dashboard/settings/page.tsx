@@ -34,6 +34,11 @@ export default function SettingsPage() {
     toast.success('Saved')
   }
 
+  const triggerPipeline = async (key: string) => {
+    await supabase.from('pipeline_state').upsert({ key, value: 'true' }, { onConflict: 'key' })
+    toast.success(`${key} triggered — check Telegram for results`)
+  }
+
   if (loading) {
     return <div className="animate-pulse"><div className="h-8 bg-bg-elevated rounded w-48 mb-8" /></div>
   }
@@ -45,6 +50,7 @@ export default function SettingsPage() {
         <div className="gold-divider mt-3" />
       </div>
       <div className="max-w-2xl space-y-6">
+        {/* Pipeline Controls */}
         <div className="card p-6">
           <h2 className="font-serif text-xl text-text-warm mb-6">Pipeline Controls</h2>
           <div className="space-y-4">
@@ -73,6 +79,39 @@ export default function SettingsPage() {
             })}
           </div>
         </div>
+
+        {/* Manual Triggers */}
+        <div className="card p-6">
+          <h2 className="font-serif text-xl text-text-warm mb-6">Manual Triggers</h2>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-text-secondary text-sm">Trigger Daily Ingestion</p>
+                <p className="text-text-muted text-xs">Scrapes all sources immediately</p>
+              </div>
+              <button
+                onClick={() => triggerPipeline('trigger_ingestion')}
+                className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
+              >
+                Run Now
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-text-secondary text-sm">Trigger Newsletter Draft</p>
+                <p className="text-text-muted text-xs">Starts draft generation pipeline</p>
+              </div>
+              <button
+                onClick={() => triggerPipeline('trigger_draft')}
+                className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
+              >
+                Draft Now
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Edition Management */}
         <div className="card p-6">
           <h2 className="font-serif text-xl text-text-warm mb-6">Edition Management</h2>
           <div className="space-y-4">
@@ -99,6 +138,21 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Beehiiv Publishing */}
+        <div className="card p-6">
+          <h2 className="font-serif text-xl text-text-warm mb-4">Beehiiv Publishing</h2>
+          <div className="p-4 bg-bg-elevated rounded border border-gold-muted">
+            <p className="text-text-secondary text-sm">
+              Publishing requires manual approval in the Beehiiv dashboard.
+            </p>
+            <p className="text-text-muted text-xs mt-2">
+              When a draft is approved here, the HTML is saved. Copy it from the edition page
+              and paste into Beehiiv to create or update your draft. Publishing is a manual
+              step in Beehiiv for full control.
+            </p>
           </div>
         </div>
       </div>

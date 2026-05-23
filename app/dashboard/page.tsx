@@ -1,6 +1,7 @@
 import { EditionStatusCard } from '@/components/dashboard/EditionStatusCard'
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
 import { DatabaseStats } from '@/components/dashboard/DatabaseStats'
+import ResearchPanel from '@/components/dashboard/ResearchPanel'
 import Link from 'next/link'
 
 export default function DashboardPage() {
@@ -13,6 +14,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <EditionStatusCard />
+          <ResearchPanel />
           <div className="card p-6">
             <h3 className="font-serif text-lg text-text-warm mb-4">Quick Actions</h3>
             <div className="space-y-2">
