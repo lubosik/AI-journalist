@@ -46,10 +46,10 @@ export default function SettingsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="font-serif text-3xl text-text-warm">Settings</h1>
+        <h1 className="font-serif text-xl md:text-3xl text-text-warm">Settings</h1>
         <div className="gold-divider mt-3" />
       </div>
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-2xl w-full space-y-6">
         {/* Pipeline Controls */}
         <div className="card p-6">
           <h2 className="font-serif text-xl text-text-warm mb-6">Pipeline Controls</h2>
@@ -84,26 +84,26 @@ export default function SettingsPage() {
         <div className="card p-6">
           <h2 className="font-serif text-xl text-text-warm mb-6">Manual Triggers</h2>
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-text-secondary text-sm">Trigger Daily Ingestion</p>
                 <p className="text-text-muted text-xs">Scrapes all sources immediately</p>
               </div>
               <button
                 onClick={() => triggerPipeline('trigger_ingestion')}
-                className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
+                className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px] sm:shrink-0"
               >
                 Run Now
               </button>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-text-secondary text-sm">Trigger Newsletter Draft</p>
                 <p className="text-text-muted text-xs">Starts draft generation pipeline</p>
               </div>
               <button
                 onClick={() => triggerPipeline('trigger_draft')}
-                className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
+                className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px] sm:shrink-0"
               >
                 Draft Now
               </button>
@@ -126,12 +126,12 @@ export default function SettingsPage() {
                     type={type}
                     value={ps[key] || ''}
                     onChange={e => setPs(prev => ({ ...prev, [key]: e.target.value }))}
-                    className="flex-1 bg-bg-elevated border border-border-dark rounded px-3 py-2 text-text-warm text-sm font-mono focus:outline-none focus:border-gold-muted"
+                    className="flex-1 min-w-0 bg-bg-elevated border border-border-dark rounded px-3 py-2 text-text-warm text-sm font-mono focus:outline-none focus:border-gold-muted"
                   />
                   <button
                     onClick={() => save(key)}
                     disabled={saving}
-                    className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40"
+                    className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px] shrink-0"
                   >
                     Save
                   </button>

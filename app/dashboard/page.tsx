@@ -8,7 +8,7 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="font-serif text-3xl text-text-warm">Intelligence Overview</h1>
+        <h1 className="font-serif text-xl md:text-3xl text-text-warm">Intelligence Overview</h1>
         <div className="gold-divider mt-3" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

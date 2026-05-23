@@ -37,6 +37,7 @@ export default function TrackerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -113,137 +114,198 @@ export default function TrackerPage() {
     return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   }
 
+  const selectedEditionData = editions.find(e => e.edition_number === selectedEdition)
+
   return (
-    <div className="flex gap-0 h-full min-h-[80vh]">
-      {/* Sidebar */}
-      <div className="w-64 shrink-0 border-r border-border-dark pr-4 space-y-1">
-        <h2 className="font-serif text-lg text-text-warm mb-4">Editions</h2>
-        {loadingEditions ? (
-          <div className="space-y-2 animate-pulse">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-14 bg-bg-elevated rounded" />
-            ))}
+    <div>
+      {/* Mobile edition selector */}
+      <div className="md:hidden mb-4">
+        <button
+          onClick={() => setSidebarOpen(o => !o)}
+          className="w-full flex items-center justify-between border border-border-dark rounded px-4 py-3 text-text-secondary text-sm hover:border-gold-muted transition-all min-h-[48px]"
+        >
+          <span>
+            {selectedEditionData
+              ? `Edition ${selectedEditionData.edition_number} — Week of ${formatWeek(selectedEditionData.week_start)}`
+              : 'Select Edition'}
+          </span>
+          <span className="text-text-muted text-xs ml-2">{sidebarOpen ? '▲' : '▼'}</span>
+        </button>
+
+        {sidebarOpen && (
+          <div className="border border-border-dark rounded mt-1 bg-bg-secondary max-h-64 overflow-y-auto">
+            {loadingEditions ? (
+              <div className="space-y-2 p-3 animate-pulse">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-12 bg-bg-elevated rounded" />
+                ))}
+              </div>
+            ) : editions.length === 0 ? (
+              <p className="text-text-muted text-xs p-3">No editions found.</p>
+            ) : (
+              editions.map(ed => {
+                const isActive = selectedEdition === ed.edition_number
+                return (
+                  <button
+                    key={ed.edition_number}
+                    onClick={() => { setSelectedEdition(ed.edition_number); setSidebarOpen(false) }}
+                    className={`w-full text-left px-4 py-3 border-b border-border-dark last:border-b-0 transition-all min-h-[48px] ${
+                      isActive
+                        ? 'text-gold bg-gold/5'
+                        : 'text-text-secondary hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Edition {ed.edition_number}</span>
+                      {ed.item_count > 0 && (
+                        <span className="text-[10px] font-mono text-text-muted border border-border-dark px-1.5 py-0.5 rounded">
+                          {ed.item_count}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-text-muted mt-0.5">
+                      Week of {formatWeek(ed.week_start)}
+                    </p>
+                  </button>
+                )
+              })
+            )}
           </div>
-        ) : editions.length === 0 ? (
-          <p className="text-text-muted text-xs">No editions found.</p>
-        ) : (
-          editions.map(ed => {
-            const isActive = selectedEdition === ed.edition_number
-            const hasIssue = !!issueIds[ed.edition_number]
-            return (
-              <button
-                key={ed.edition_number}
-                onClick={() => setSelectedEdition(ed.edition_number)}
-                className={`w-full text-left px-3 py-2.5 rounded border transition-all ${
-                  isActive
-                    ? 'border-gold bg-gold/5 text-gold'
-                    : 'border-transparent text-text-secondary hover:border-border-dark hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Edition {ed.edition_number}</span>
-                  {ed.item_count > 0 && (
-                    <span className="text-[10px] font-mono text-text-muted border border-border-dark px-1.5 py-0.5 rounded">
-                      {ed.item_count}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-text-muted mt-0.5">
-                  Week of {formatWeek(ed.week_start)}
-                </p>
-                {!hasIssue && (
-                  <p className="text-[10px] text-text-muted italic mt-0.5">No draft yet</p>
-                )}
-              </button>
-            )
-          })
         )}
       </div>
 
-      {/* Main panel */}
-      <div className="flex-1 pl-6 min-w-0">
-        {/* Search bar */}
-        <div className="mb-6">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search content across all editions..."
-              className="w-full bg-bg-elevated border border-border-dark rounded px-4 py-2.5 text-text-secondary text-sm focus:outline-none focus:border-gold-muted placeholder-text-muted transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary text-lg leading-none"
-              >
-                ×
-              </button>
-            )}
-          </div>
+      {/* Desktop layout */}
+      <div className="flex gap-0 min-h-[80vh]">
+        {/* Sidebar — desktop only */}
+        <div className="hidden md:block w-64 shrink-0 border-r border-border-dark pr-4 space-y-1">
+          <h2 className="font-serif text-lg text-text-warm mb-4">Editions</h2>
+          {loadingEditions ? (
+            <div className="space-y-2 animate-pulse">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="h-14 bg-bg-elevated rounded" />
+              ))}
+            </div>
+          ) : editions.length === 0 ? (
+            <p className="text-text-muted text-xs">No editions found.</p>
+          ) : (
+            editions.map(ed => {
+              const isActive = selectedEdition === ed.edition_number
+              const hasIssue = !!issueIds[ed.edition_number]
+              return (
+                <button
+                  key={ed.edition_number}
+                  onClick={() => setSelectedEdition(ed.edition_number)}
+                  className={`w-full text-left px-3 py-2.5 rounded border transition-all ${
+                    isActive
+                      ? 'border-gold bg-gold/5 text-gold'
+                      : 'border-transparent text-text-secondary hover:border-border-dark hover:bg-white/5'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Edition {ed.edition_number}</span>
+                    {ed.item_count > 0 && (
+                      <span className="text-[10px] font-mono text-text-muted border border-border-dark px-1.5 py-0.5 rounded">
+                        {ed.item_count}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Week of {formatWeek(ed.week_start)}
+                  </p>
+                  {!hasIssue && (
+                    <p className="text-[10px] text-text-muted italic mt-0.5">No draft yet</p>
+                  )}
+                </button>
+              )
+            })
+          )}
         </div>
 
-        {/* Search results */}
-        {searchQuery.trim() && (
+        {/* Main panel */}
+        <div className="flex-1 md:pl-6 min-w-0">
+          {/* Search bar */}
           <div className="mb-6">
-            <div className="mb-3 flex items-center gap-2">
-              <h3 className="font-serif text-text-warm text-sm">Search Results</h3>
-              {searching ? (
-                <span className="text-[10px] text-text-muted">Searching...</span>
-              ) : (
-                <span className="text-[10px] text-text-muted font-mono">{searchResults.length} results</span>
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search content across all editions..."
+                className="w-full bg-bg-elevated border border-border-dark rounded px-4 py-2.5 text-text-secondary text-sm focus:outline-none focus:border-gold-muted placeholder-text-muted transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary text-lg leading-none min-w-[44px] min-h-[44px] flex items-center justify-center"
+                >
+                  ×
+                </button>
               )}
             </div>
-            {searchResults.length === 0 && !searching ? (
-              <p className="text-text-muted text-xs">No results found.</p>
-            ) : (
-              <div className="space-y-2">
-                {searchResults.map(result => (
-                  <div
-                    key={result.id}
-                    className="border border-border-dark bg-bg-elevated rounded p-3 cursor-pointer hover:border-gold-muted transition-all"
-                    onClick={() => {
-                      setSearchQuery('')
-                      setSelectedEdition(result.edition_number)
-                    }}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] tracking-widest uppercase text-gold border border-gold-muted px-1.5 py-0.5 rounded">
-                        Edition {result.edition_number}
-                      </span>
-                      <span className="text-[10px] text-text-muted uppercase tracking-wider">
-                        {result.content_type}
-                      </span>
-                    </div>
-                    <p className="text-text-secondary text-xs">{result.body.slice(0, 120)}{result.body.length > 120 ? '…' : ''}</p>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        )}
 
-        {/* EditionTracker or no-issue placeholder */}
-        {!searchQuery.trim() && (
-          <>
-            {selectedEdition === null ? (
-              <div className="card p-12 text-center text-text-muted">
-                <p>Select an edition from the sidebar.</p>
+          {/* Search results */}
+          {searchQuery.trim() && (
+            <div className="mb-6">
+              <div className="mb-3 flex items-center gap-2">
+                <h3 className="font-serif text-text-warm text-sm">Search Results</h3>
+                {searching ? (
+                  <span className="text-[10px] text-text-muted">Searching...</span>
+                ) : (
+                  <span className="text-[10px] text-text-muted font-mono">{searchResults.length} results</span>
+                )}
               </div>
-            ) : !selectedIssueId ? (
-              <div className="card p-12 text-center text-text-muted">
-                <p className="font-serif text-text-secondary mb-2">Edition {selectedEdition}</p>
-                <p className="text-sm">No draft for this edition yet.</p>
-                <p className="text-xs mt-2">A draft will appear here once the pipeline generates one.</p>
-              </div>
-            ) : (
-              <div>
-                <h2 className="font-serif text-xl text-gold mb-4">Edition {selectedEdition}</h2>
-                <EditionTracker issueId={selectedIssueId} editionNumber={selectedEdition} />
-              </div>
-            )}
-          </>
-        )}
+              {searchResults.length === 0 && !searching ? (
+                <p className="text-text-muted text-xs">No results found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {searchResults.map(result => (
+                    <div
+                      key={result.id}
+                      className="border border-border-dark bg-bg-elevated rounded p-3 cursor-pointer hover:border-gold-muted transition-all"
+                      onClick={() => {
+                        setSearchQuery('')
+                        setSelectedEdition(result.edition_number)
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] tracking-widest uppercase text-gold border border-gold-muted px-1.5 py-0.5 rounded">
+                          Edition {result.edition_number}
+                        </span>
+                        <span className="text-[10px] text-text-muted uppercase tracking-wider">
+                          {result.content_type}
+                        </span>
+                      </div>
+                      <p className="text-text-secondary text-xs">{result.body.slice(0, 120)}{result.body.length > 120 ? '…' : ''}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* EditionTracker or no-issue placeholder */}
+          {!searchQuery.trim() && (
+            <>
+              {selectedEdition === null ? (
+                <div className="card p-12 text-center text-text-muted">
+                  <p>Select an edition above.</p>
+                </div>
+              ) : !selectedIssueId ? (
+                <div className="card p-12 text-center text-text-muted">
+                  <p className="font-serif text-text-secondary mb-2">Edition {selectedEdition}</p>
+                  <p className="text-sm">No draft for this edition yet.</p>
+                  <p className="text-xs mt-2">A draft will appear here once the pipeline generates one.</p>
+                </div>
+              ) : (
+                <div>
+                  <h2 className="font-serif text-xl text-gold mb-4">Edition {selectedEdition}</h2>
+                  <EditionTracker issueId={selectedIssueId} editionNumber={selectedEdition} />
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

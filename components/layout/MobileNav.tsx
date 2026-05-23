@@ -7,13 +7,13 @@ const navItems = [
   { href: '/dashboard/editions', label: 'Editions', icon: '◉' },
   { href: '/dashboard/tracker', label: 'Tracker', icon: '▦' },
   { href: '/dashboard/research', label: 'Research', icon: '◎' },
-  { href: '/dashboard/activity', label: 'Activity', icon: '◈' },
+  { href: '/dashboard/settings', label: 'Settings', icon: '◇' },
 ]
 
 export function MobileNav() {
   const pathname = usePathname()
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-bg-primary/95 backdrop-blur-xl border-t border-border-dark">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-bg-primary/95 backdrop-blur-xl border-t border-border-dark pb-6">
       <nav className="flex">
         {navItems.map(item => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
@@ -21,10 +21,14 @@ export function MobileNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs transition-colors ${isActive ? 'text-gold' : 'text-text-muted'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 min-h-[56px] py-2 text-[10px] tracking-wide transition-colors ${
+                isActive
+                  ? 'text-gold'
+                  : 'text-text-muted hover:text-text-secondary'
+              }`}
             >
-              <span>{item.icon}</span>
-              <span className="tracking-wide">{item.label}</span>
+              <span className={`text-base leading-none ${isActive ? 'text-gold' : ''}`}>{item.icon}</span>
+              <span>{item.label}</span>
             </Link>
           )
         })}

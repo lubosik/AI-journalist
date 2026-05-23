@@ -54,26 +54,24 @@ export default function ResearchPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="font-serif text-3xl text-text-warm">Research Database</h1>
+        <h1 className="font-serif text-xl md:text-3xl text-text-warm">Research Database</h1>
         <div className="gold-divider mt-3" />
       </div>
-      <div className="flex gap-3 mb-6 flex-wrap">
-        <div className="flex-1 min-w-48">
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search content..."
-            className="w-full bg-bg-elevated border border-border-dark rounded px-4 py-2 text-text-warm text-sm focus:outline-none focus:border-gold-muted"
-          />
-        </div>
+      <div className="flex flex-col gap-3 mb-6">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          placeholder="Search content..."
+          className="w-full bg-bg-elevated border border-border-dark rounded px-4 py-2.5 text-text-warm text-sm focus:outline-none focus:border-gold-muted min-h-[44px]"
+        />
         <div className="flex gap-2 flex-wrap">
           {SOURCE_TYPES.map(t => (
             <button
               key={t}
               onClick={() => { setSourceType(t); setPage(0) }}
-              className={`px-3 py-2 rounded text-xs tracking-wide border transition-all ${
+              className={`px-3 py-2 rounded text-xs tracking-wide border transition-all min-h-[44px] ${
                 sourceType === t
                   ? 'border-gold text-gold bg-gold/5'
                   : 'border-border-dark text-text-muted hover:border-gold-muted hover:text-text-secondary'

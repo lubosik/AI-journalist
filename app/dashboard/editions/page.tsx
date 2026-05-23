@@ -93,7 +93,7 @@ export default function EditionsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="font-serif text-3xl text-text-warm">Editions</h1>
+        <h1 className="font-serif text-xl md:text-3xl text-text-warm">Editions</h1>
         <div className="gold-divider mt-3" />
       </div>
       {loading ? (

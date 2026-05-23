@@ -91,7 +91,7 @@ function ItemCard({ item, onRemove, onRestore, showRemoved }: ItemCardProps) {
         </div>
         <button
           onClick={() => item.removed ? onRestore(item.id) : onRemove(item.id)}
-          className={`text-[10px] tracking-widest uppercase px-2 py-0.5 rounded border transition-all shrink-0 ${
+          className={`text-[10px] tracking-widest uppercase px-3 py-2 rounded border transition-all shrink-0 min-h-[44px] min-w-[60px] flex items-center justify-center ${
             item.removed
               ? 'border-gold-muted text-gold-muted hover:border-gold hover:text-gold'
               : 'border-red-900 text-red-700 hover:bg-red-900 hover:text-red-300'
@@ -214,28 +214,28 @@ function AddTopicForm({ onSubmit, onCancel, submitting }: AddTopicFormProps) {
         onChange={e => setTopic(e.target.value)}
         autoFocus
       />
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <select
           value={topicType}
           onChange={e => setTopicType(e.target.value)}
-          className="bg-bg-elevated border border-border-dark rounded px-2 py-1.5 text-text-secondary text-xs focus:outline-none focus:border-gold-muted"
+          className="bg-bg-elevated border border-border-dark rounded px-2 py-2.5 text-text-secondary text-xs focus:outline-none focus:border-gold-muted min-h-[44px]"
         >
           {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
             <option key={key} value={key}>{cfg.label}</option>
           ))}
         </select>
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2 sm:ml-auto">
           <button
             type="button"
             onClick={onCancel}
-            className="border border-border-dark text-text-muted px-3 py-1.5 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all"
+            className="flex-1 sm:flex-none border border-border-dark text-text-muted px-3 py-2.5 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all min-h-[44px]"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting || !topic.trim()}
-            className="bg-gold text-bg-primary px-4 py-1.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40"
+            className="flex-1 sm:flex-none bg-gold text-bg-primary px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px]"
           >
             {submitting ? 'Adding...' : 'Add'}
           </button>
@@ -409,14 +409,14 @@ export default function EditionTracker({
   return (
     <div className="space-y-4">
       {/* Top bar */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap">
         {/* View toggle */}
         <div className="flex border border-border-dark rounded overflow-hidden">
           {(['grouped', 'timeline'] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-3 py-1.5 text-xs tracking-widest uppercase transition-all ${
+              className={`px-3 py-2 text-xs tracking-widest uppercase transition-all min-h-[44px] ${
                 view === v
                   ? 'bg-gold text-bg-primary'
                   : 'text-text-muted hover:text-text-secondary'
@@ -430,7 +430,7 @@ export default function EditionTracker({
         {/* Show removed toggle */}
         <button
           onClick={() => setShowRemoved(s => !s)}
-          className={`px-3 py-1.5 text-xs tracking-widest uppercase rounded border transition-all ${
+          className={`px-3 py-2 text-xs tracking-widest uppercase rounded border transition-all min-h-[44px] ${
             showRemoved
               ? 'border-red-800 text-red-500 bg-red-900/20'
               : 'border-border-dark text-text-muted hover:border-gold-muted'
@@ -443,25 +443,25 @@ export default function EditionTracker({
         {!addingTopic && (
           <button
             onClick={() => setAddingTopic(true)}
-            className="px-3 py-1.5 text-xs tracking-widest uppercase rounded border border-gold-muted text-gold hover:bg-gold hover:text-bg-primary transition-all"
+            className="px-3 py-2 text-xs tracking-widest uppercase rounded border border-gold-muted text-gold hover:bg-gold hover:text-bg-primary transition-all min-h-[44px]"
           >
-            + Add Topic
+            + Add
           </button>
         )}
 
-        {/* Live indicator */}
-        <div className="flex items-center gap-1.5 ml-auto">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+        {/* Live indicator + stats — pushed to end */}
+        <div className="flex items-center gap-3 ml-auto">
+          <span className="text-[10px] text-text-muted font-mono hidden sm:inline">
+            {activeItems.length} active / {items.length} total
           </span>
-          <span className="text-[10px] text-text-muted tracking-widest uppercase">Live</span>
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+            <span className="text-[10px] text-text-muted tracking-widest uppercase">Live</span>
+          </div>
         </div>
-
-        {/* Stats */}
-        <span className="text-[10px] text-text-muted font-mono">
-          {activeItems.length} active / {items.length} total
-        </span>
       </div>
 
       {/* Add topic form */}

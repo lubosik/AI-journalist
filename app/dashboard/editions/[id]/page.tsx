@@ -174,17 +174,17 @@ export default function EditionPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="font-serif text-3xl text-gold">EDITION {toRoman(issue.issue_number)}</h1>
-          <p className="text-text-secondary text-sm mt-1">{issue.subject_line}</p>
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-serif text-xl md:text-3xl text-gold">EDITION {toRoman(issue.issue_number)}</h1>
+          <p className="text-text-secondary text-sm mt-1 line-clamp-2">{issue.subject_line}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <StatusBadge status={issue.status} />
           {canDelete && (
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="text-xs px-3 py-1.5 rounded border border-red-900 text-red-700 hover:bg-red-900 hover:text-red-300 tracking-widest uppercase transition-all"
+              className="text-xs px-3 py-2 rounded border border-red-900 text-red-700 hover:bg-red-900 hover:text-red-300 tracking-widest uppercase transition-all min-h-[44px] flex items-center"
             >
               Delete
             </button>
@@ -221,32 +221,34 @@ export default function EditionPage() {
 
       {/* Action buttons */}
       {issue.status === 'draft' && (
-        <div className="flex gap-3 mb-6 flex-wrap">
-          <button onClick={handleApprove} className="bg-gold text-bg-primary px-6 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all">
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button onClick={handleApprove} className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all min-h-[44px]">
             Approve
           </button>
-          <button onClick={handleDecline} className="border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-red-900 hover:text-red-800 transition-all">
+          <button onClick={handleDecline} className="border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-red-900 hover:text-red-800 transition-all min-h-[44px]">
             Decline
           </button>
-          <button onClick={copyHTML} className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all">
+          <button onClick={copyHTML} className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px]">
             Copy HTML
           </button>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-border-dark mb-6">
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm tracking-wide transition-colors border-b-2 -mb-px ${
-              activeTab === tab ? 'text-gold border-gold' : 'text-text-muted border-transparent hover:text-text-secondary'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-6">
+        <div className="flex gap-0 border-b border-border-dark min-w-max md:min-w-0">
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 md:px-4 py-2.5 text-xs md:text-sm tracking-wide transition-colors border-b-2 -mb-px whitespace-nowrap min-h-[44px] ${
+                activeTab === tab ? 'text-gold border-gold' : 'text-text-muted border-transparent hover:text-text-secondary'
+              }`}
+            >
+              {tab === 'Edition Tracker' ? 'Tracker' : tab === 'Copy & Export' ? 'Export' : tab}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* TAB 1: Preview */}
@@ -275,14 +277,14 @@ export default function EditionPage() {
       {/* TAB 2: Edit Content */}
       {activeTab === 'Edit Content' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-text-muted text-xs">Edit section content. Press Save &amp; Rebuild to update the preview.</p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+            <p className="text-text-muted text-xs flex-1">Edit section content. Press Save &amp; Rebuild to update the preview.</p>
             <button
               onClick={rebuildHTML}
               disabled={rebuilding}
-              className="bg-gold text-bg-primary px-5 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40"
+              className="bg-gold text-bg-primary px-5 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px] w-full sm:w-auto"
             >
-              {rebuilding ? 'Queuing...' : 'Save & Rebuild Preview'}
+              {rebuilding ? 'Queuing...' : 'Save & Rebuild'}
             </button>
           </div>
           {(issue.sections || []).map((section, idx) => (
@@ -339,7 +341,7 @@ export default function EditionPage() {
       {activeTab === 'Copy & Export' && (
         <div className="space-y-4">
           <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
               <div>
                 <h3 className="font-serif text-text-warm mb-1">Export HTML</h3>
                 <p className="text-text-muted text-xs">
@@ -348,11 +350,11 @@ export default function EditionPage() {
                     : 'No HTML available'}
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2 mt-3 sm:mt-0">
                 <button
                   onClick={copyHTML}
                   disabled={!issue.html_content}
-                  className="bg-gold text-bg-primary px-6 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40"
+                  className="bg-gold text-bg-primary px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px]"
                 >
                   Copy HTML
                 </button>
@@ -364,7 +366,7 @@ export default function EditionPage() {
                     window.open(url, '_blank')
                   }}
                   disabled={!issue.html_content}
-                  className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40"
+                  className="border border-gold-muted text-gold px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px]"
                 >
                   Open in Tab
                 </button>
@@ -399,29 +401,29 @@ function RawHTMLTab({ issue, onSave }: { issue: NewsletterIssue; onSave: (html: 
   const [dirty, setDirty] = useState(false)
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card p-4 md:p-6">
+      <div className="flex items-center justify-between mb-4 gap-3">
         <h3 className="font-serif text-text-warm">Raw HTML</h3>
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           {dirty && (
             <button
               onClick={() => { onSave(value); setDirty(false) }}
-              className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all"
+              className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all min-h-[44px]"
             >
               Save
             </button>
           )}
           <button
             onClick={() => { navigator.clipboard.writeText(value); toast.success('Copied') }}
-            className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all"
+            className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px]"
           >
             Copy
           </button>
         </div>
       </div>
       <textarea
-        className="w-full bg-bg-elevated border border-border-dark rounded p-4 text-text-secondary font-mono text-xs focus:outline-none focus:border-gold-muted resize-none"
-        style={{ height: '60vh' }}
+        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary font-mono text-xs focus:outline-none focus:border-gold-muted resize-none"
+        style={{ height: '55vh', maxHeight: '70vh' }}
         value={value}
         onChange={(e) => { setValue(e.target.value); setDirty(true) }}
       />
