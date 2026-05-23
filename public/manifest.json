@@ -1,14 +1,22 @@
 {
-  "name": "HERALD Intelligence",
-  "short_name": "HERALD",
-  "description": "VC Secondaries Newsletter Intelligence Dashboard",
+  "name": "The AI Journalist",
+  "short_name": "AI Journalist",
+  "description": "VC Secondaries Newsletter Intelligence",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#c9a84c",
   "orientation": "portrait-primary",
+  "categories": ["productivity", "news"],
   "icons": [
     {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
     {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ],
+  "shortcuts": [
+    {
+      "name": "Editions",
+      "url": "/dashboard/editions",
+      "description": "View newsletter editions"
+    }
   ]
 }

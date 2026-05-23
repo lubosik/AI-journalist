@@ -27,7 +27,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-12">
-          <h1 className="font-serif text-4xl text-gold tracking-widest mb-2">HERALD</h1>
+          <h1 className="font-serif text-4xl text-gold tracking-widest mb-2">The AI Journalist</h1>
           <p className="text-text-muted text-xs tracking-[0.2em] uppercase">Intelligence Dashboard</p>
         </div>
         <div className="card p-8">

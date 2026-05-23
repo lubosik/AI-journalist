@@ -22,13 +22,13 @@ const jetbrains = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'HERALD Intelligence',
-  description: 'VC Secondaries Newsletter Intelligence Dashboard',
+  title: 'The AI Journalist',
+  description: 'VC Secondaries Newsletter Intelligence',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'HERALD',
+    title: 'AI Journalist',
   },
 }
 
@@ -40,7 +40,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${playfair.variable} ${inter.variable} ${jetbrains.variable}`}>
       <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/icon-192.png" sizes="192x192" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="application-name" content="The AI Journalist" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="AI Journalist" />
       </head>
       <body className="bg-bg-primary text-text-warm font-sans antialiased">
         {children}

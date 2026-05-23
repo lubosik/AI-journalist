@@ -13,16 +13,27 @@ const toRoman = (n: number) => {
   return r
 }
 
+/** Parse a date string safely, treating date-only strings as local midnight
+ *  to avoid UTC-offset day-shift (e.g. "2026-05-24" showing as Saturday). */
+function parseLocalDate(dateStr: string): Date {
+  // If the string is a plain date (YYYY-MM-DD), append T00:00 so it's parsed
+  // as local midnight rather than UTC midnight.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'T00:00:00')
+  }
+  return new Date(dateStr)
+}
+
 function getDaysUntil(dateStr: string | null) {
   if (!dateStr) return null
-  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
+  return Math.ceil((parseLocalDate(dateStr).getTime() - Date.now()) / 86400000)
 }
 
 function getWindow(lockedAfter: string | null, publishDate: string | null): string {
   const now = new Date()
-  if (lockedAfter && now > new Date(lockedAfter)) return 'closed'
+  if (lockedAfter && now > parseLocalDate(lockedAfter)) return 'closed'
   if (publishDate) {
-    const draft = new Date(publishDate)
+    const draft = parseLocalDate(publishDate)
     draft.setDate(draft.getDate() - 2)
     draft.setHours(18, 0, 0, 0)
     if (now >= draft) return 'drafting'
@@ -47,14 +58,14 @@ export function EditionStatusCard() {
   const statusMap: Record<string, string> = { research: 'research', drafting: 'drafting', closed: 'published' }
 
   const draftDate = nextPublishDate ? (() => {
-    const d = new Date(nextPublishDate)
+    const d = parseLocalDate(nextPublishDate)
     d.setDate(d.getDate() - 2)
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   })() : null
 
   const weekOf = nextPublishDate ? (() => {
     // Week starts on the Monday before (or on) the publish date
-    const d = new Date(nextPublishDate)
+    const d = parseLocalDate(nextPublishDate)
     const dow = d.getDay() // 0=Sun
     const monday = new Date(d)
     monday.setDate(d.getDate() - ((dow === 0 ? 7 : dow) - 1))
@@ -84,7 +95,7 @@ export function EditionStatusCard() {
           <div className="flex justify-between">
             <span className="text-text-muted">Publish date</span>
             <span className="font-mono text-text-warm text-xs">
-              {new Date(nextPublishDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              {parseLocalDate(nextPublishDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
             </span>
           </div>
         )}
@@ -92,7 +103,7 @@ export function EditionStatusCard() {
           <div className="flex justify-between">
             <span className="text-text-muted">Last draft done</span>
             <span className="font-mono text-text-warm text-xs">
-              {new Date(lastDraftDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              {parseLocalDate(lastDraftDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
             </span>
           </div>
         )}
