@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
-import type { NewsletterIssue } from '@/types/herald'
+import type { NewsletterIssue, Visual } from '@/types/herald'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { toast } from 'sonner'
 
@@ -46,7 +46,10 @@ export default function EditionPage() {
     const sections = typeof data.sections === 'string'
       ? (() => { try { return JSON.parse(data.sections as string) } catch { return [] } })()
       : (data.sections || [])
-    return { ...data, sections } as unknown as NewsletterIssue
+    const visuals = typeof data.visuals === 'string'
+      ? (() => { try { return JSON.parse(data.visuals as string) } catch { return [] } })()
+      : (data.visuals || [])
+    return { ...data, sections, visuals } as unknown as NewsletterIssue
   }
 
   useEffect(() => {
@@ -158,7 +161,7 @@ export default function EditionPage() {
         toast.error(`Rebuild failed: ${body.error ?? res.status}`)
         return
       }
-      toast.success('Rebuild queued — check Telegram in ~30s')
+      toast.success('Rebuilt successfully')
     } catch {
       toast.error('Rebuild request failed')
     } finally {
@@ -184,6 +187,19 @@ export default function EditionPage() {
   if (!issue) return <p className="text-text-muted">Edition not found</p>
 
   const canDelete = ['draft', 'generating', 'paused', 'declined'].includes(issue.status)
+
+  // Dedup sections: if both 'deal' and 'deal_watch' exist, skip 'deal'
+  const hasDealWatch = (issue.sections || []).some(s => s.id === 'deal_watch')
+  const displaySections = (issue.sections || []).filter(s => {
+    if (s.id === 'deal' && hasDealWatch) return false
+    return true
+  })
+
+  // Resolve display title for deal-related sections
+  function getSectionTitle(section: { id: string; title?: string }): string {
+    if (section.id === 'deal' || section.id === 'deal_watch') return 'Deals'
+    return section.title || section.id
+  }
 
   return (
     <div>
@@ -292,13 +308,21 @@ export default function EditionPage() {
               disabled={rebuilding}
               className="bg-gold text-bg-primary px-5 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px] w-full sm:w-auto"
             >
-              {rebuilding ? 'Queuing...' : 'Save & Rebuild'}
+              {rebuilding ? 'Building...' : 'Save & Rebuild'}
             </button>
           </div>
-          {(issue.sections || []).map((section, idx) => (
+
+          {/* Subject Line field */}
+          <SubjectLineField issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, subject_line: val } : null)} />
+
+          {/* Note / Preview Text field */}
+          <NoteField issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, preview_text: val } : null)} />
+
+          {/* Section editors */}
+          {displaySections.map((section, idx) => (
             <div key={section.id || idx} className="card p-6">
               <div className="flex items-center justify-between mb-3">
-                <h4 className="font-serif text-text-warm">{section.title || section.id}</h4>
+                <h4 className="font-serif text-text-warm">{getSectionTitle(section)}</h4>
                 <div className="flex items-center gap-3">
                   {section.word_count && (
                     <span className="text-text-muted text-xs font-mono">{section.word_count} words</span>
@@ -321,17 +345,24 @@ export default function EditionPage() {
                   const orig = sectionRefs.current[section.id]
                   if (newVal !== orig) {
                     saveSection(section.id, newVal)
-                    // sectionDirtyRef is cleared by saveSection only on success,
-                    // so failed saves remain tracked for retry via Save & Rebuild
                   }
                 }}
                 onFocus={(e) => { sectionRefs.current[section.id] = e.target.value }}
               />
             </div>
           ))}
-          {(!issue.sections || issue.sections.length === 0) && (
+          {displaySections.length === 0 && (
             <p className="text-text-muted text-center py-12">No sections available.</p>
           )}
+
+          {/* Visuals manager */}
+          <VisualsManager
+            issue={issue}
+            onVisualsUpdated={(visuals) => {
+              setIssue(prev => prev ? { ...prev, visuals } : null)
+              rebuildHTML()
+            }}
+          />
         </div>
       )}
 
@@ -404,9 +435,268 @@ export default function EditionPage() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// SubjectLineField
+// ---------------------------------------------------------------------------
+
+function SubjectLineField({
+  issue,
+  onSaved,
+}: {
+  issue: NewsletterIssue
+  onSaved: (val: string) => void
+}) {
+  const [value, setValue] = useState(issue.subject_line || '')
+  const [saving, setSaving] = useState(false)
+  const origRef = useRef(issue.subject_line || '')
+
+  // Resync when realtime update changes the issue prop (but only if not actively editing)
+  useEffect(() => {
+    setValue(issue.subject_line || '')
+    origRef.current = issue.subject_line || ''
+  }, [issue.subject_line])
+
+  const handleBlur = async () => {
+    if (value === origRef.current) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ subject_line: value })
+      .eq('id', issue.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to save subject line'); return }
+    origRef.current = value
+    onSaved(value)
+    toast.success('Subject line saved')
+  }
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-serif text-text-warm">Subject Line</h4>
+        {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+      </div>
+      <textarea
+        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+        rows={2}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onFocus={() => { origRef.current = value }}
+        placeholder="Newsletter subject line..."
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// NoteField (preview_text)
+// ---------------------------------------------------------------------------
+
+function NoteField({
+  issue,
+  onSaved,
+}: {
+  issue: NewsletterIssue
+  onSaved: (val: string) => void
+}) {
+  const [value, setValue] = useState(issue.preview_text || '')
+  const [saving, setSaving] = useState(false)
+  const origRef = useRef(issue.preview_text || '')
+
+  // Resync when realtime update changes the issue prop (but only if not actively editing)
+  useEffect(() => {
+    setValue(issue.preview_text || '')
+    origRef.current = issue.preview_text || ''
+  }, [issue.preview_text])
+
+  const handleBlur = async () => {
+    if (value === origRef.current) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ preview_text: value })
+      .eq('id', issue.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to save note'); return }
+    origRef.current = value
+    onSaved(value)
+    toast.success('Note saved')
+  }
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-serif text-text-warm">Note</h4>
+        {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+      </div>
+      <textarea
+        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+        rows={2}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onFocus={() => { origRef.current = value }}
+        placeholder="Preview text / note..."
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// VisualsManager
+// ---------------------------------------------------------------------------
+
+const PLACEMENT_OPTIONS = ['top', 'after_section_2', 'after_section_4'] as const
+type Placement = typeof PLACEMENT_OPTIONS[number]
+
+function VisualsManager({
+  issue,
+  onVisualsUpdated,
+}: {
+  issue: NewsletterIssue
+  onVisualsUpdated: (visuals: Visual[]) => void
+}) {
+  const [addUrl, setAddUrl] = useState('')
+  const [addPlacement, setAddPlacement] = useState<Placement>('top')
+  const [addAlt, setAddAlt] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [deletingIdx, setDeletingIdx] = useState<number | null>(null)
+
+  const currentVisuals: Visual[] = issue.visuals || []
+
+  const saveVisuals = async (visuals: Visual[]): Promise<boolean> => {
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ visuals })
+      .eq('id', issue.id)
+    if (error) { toast.error('Failed to save visuals'); return false }
+    onVisualsUpdated(visuals)
+    return true
+  }
+
+  const handleAdd = async () => {
+    if (!addUrl.trim()) { toast.error('Image URL is required'); return }
+    setAdding(true)
+    const newVisual: Visual = {
+      placement: addPlacement,
+      url: addUrl.trim(),
+      alt: addAlt.trim() || undefined,
+    }
+    const updated = [...currentVisuals, newVisual]
+    const ok = await saveVisuals(updated)
+    if (ok) {
+      setAddUrl('')
+      setAddAlt('')
+      toast.success('Visual added')
+    }
+    setAdding(false)
+  }
+
+  const handleDelete = async (idx: number) => {
+    setDeletingIdx(idx)
+    const updated = currentVisuals.filter((_, i) => i !== idx)
+    const ok = await saveVisuals(updated)
+    if (ok) toast.success('Visual removed')
+    setDeletingIdx(null)
+  }
+
+  return (
+    <div className="card p-6">
+      <h4 className="font-serif text-text-warm mb-4">Visuals</h4>
+
+      {/* Current visuals list */}
+      {currentVisuals.length === 0 && (
+        <p className="text-text-muted text-sm mb-4">No visuals attached.</p>
+      )}
+      {currentVisuals.length > 0 && (
+        <div className="space-y-3 mb-6">
+          {currentVisuals.map((v, idx) => (
+            <div key={idx} className="flex items-center gap-3 bg-bg-elevated rounded p-3 border border-border-dark">
+              {/* Thumbnail */}
+              <div className="shrink-0 w-14 h-10 rounded overflow-hidden bg-bg-primary border border-border-dark flex items-center justify-center">
+                <img
+                  src={v.url}
+                  alt={v.alt || 'visual'}
+                  className="object-cover w-full h-full"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-text-secondary text-xs font-mono truncate">{v.url}</p>
+                <p className="text-text-muted text-xs mt-0.5">
+                  <span className="text-gold-muted">{v.placement}</span>
+                  {v.alt && <span className="ml-2">· {v.alt}</span>}
+                </p>
+              </div>
+              {/* Delete */}
+              <button
+                onClick={() => handleDelete(idx)}
+                disabled={deletingIdx === idx}
+                className="shrink-0 text-xs px-3 py-1.5 rounded border border-red-900 text-red-700 hover:bg-red-900 hover:text-red-300 tracking-widest uppercase transition-all disabled:opacity-40"
+              >
+                {deletingIdx === idx ? '...' : 'Remove'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add visual form */}
+      <div className="border-t border-border-dark pt-4">
+        <p className="text-text-muted text-xs mb-3 tracking-wide uppercase font-sans">Add Image</p>
+        <div className="space-y-3">
+          <input
+            type="url"
+            value={addUrl}
+            onChange={(e) => setAddUrl(e.target.value)}
+            placeholder="Image URL (https://...)"
+            className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
+          />
+          <div className="flex gap-3">
+            <select
+              value={addPlacement}
+              onChange={(e) => setAddPlacement(e.target.value as Placement)}
+              className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm focus:outline-none focus:border-gold-muted transition-colors"
+            >
+              {PLACEMENT_OPTIONS.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={addAlt}
+              onChange={(e) => setAddAlt(e.target.value)}
+              placeholder="Alt text (optional)"
+              className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
+            />
+          </div>
+          <button
+            onClick={handleAdd}
+            disabled={adding || !addUrl.trim()}
+            className="bg-gold text-bg-primary px-5 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px]"
+          >
+            {adding ? 'Adding...' : 'Add Visual'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RawHTMLTab
+// ---------------------------------------------------------------------------
+
 function RawHTMLTab({ issue, onSave }: { issue: NewsletterIssue; onSave: (html: string) => void }) {
   const [value, setValue] = useState(issue.html_content || '')
   const [dirty, setDirty] = useState(false)
+
+  // Resync when a rebuild updates html_content via realtime (but not if user is editing)
+  useEffect(() => {
+    if (!dirty) setValue(issue.html_content || '')
+  }, [issue.html_content, dirty])
 
   return (
     <div className="card p-4 md:p-6">

@@ -22,6 +22,13 @@ export interface Section {
   voice_score?: number
 }
 
+export interface Visual {
+  placement: string
+  url: string
+  alt?: string
+  caption?: string
+}
+
 export interface NewsletterIssue {
   id: string
   issue_number: number
@@ -31,6 +38,8 @@ export interface NewsletterIssue {
   html_content?: string
   plain_text?: string
   sections?: Section[]
+  visuals?: Visual[]
+  week_start?: string | null
   created_at: string
   updated_at?: string
 }
