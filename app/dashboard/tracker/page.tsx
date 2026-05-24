@@ -4,6 +4,29 @@ import { supabase } from '@/lib/supabase'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 
+function getNextSundayDeadline(): Date {
+  const nowEst = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const dow = nowEst.getDay()
+  const daysUntilSunday = dow === 0 ? 0 : 7 - dow
+  const candidate = new Date(nowEst)
+  candidate.setDate(candidate.getDate() + daysUntilSunday)
+  candidate.setHours(18, 0, 0, 0)
+  if (candidate <= nowEst) candidate.setDate(candidate.getDate() + 7)
+  const estOffset = new Date().getTime() - new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).getTime()
+  return new Date(candidate.getTime() + estOffset)
+}
+
+function getCurrentEditionNumber(editions: EditionWithCount[]): number | null {
+  const deadline = getNextSundayDeadline()
+  // deadline is Sunday; current edition's week_end is Saturday = deadline - 1 day
+  const weekEnd = new Date(deadline)
+  weekEnd.setDate(weekEnd.getDate() - 1)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const weekEndStr = `${weekEnd.getFullYear()}-${pad(weekEnd.getMonth() + 1)}-${pad(weekEnd.getDate())}`
+  const match = editions.find(e => e.week_end === weekEndStr)
+  return match?.edition_number ?? (editions.length > 0 ? editions[editions.length - 1].edition_number : null)
+}
+
 const EditionTracker = dynamic(() => import('@/components/editions/EditionTracker'), { ssr: false })
 
 interface EditionWeek {
@@ -76,8 +99,8 @@ export default function TrackerPage() {
       }))
       setEditions(withCounts)
 
-      // Auto-select the most recent edition
-      if (withCounts.length > 0) setSelectedEdition(withCounts[0].edition_number)
+      // Auto-select the current edition based on deadline logic
+      if (withCounts.length > 0) setSelectedEdition(getCurrentEditionNumber(withCounts))
 
       setLoadingEditions(false)
     })
@@ -153,9 +176,10 @@ export default function TrackerPage() {
             ) : editions.length === 0 ? (
               <p className="text-text-muted text-xs p-3">No editions found.</p>
             ) : (
-              editions.map((ed, idx) => {
+              editions.map((ed) => {
                 const isActive = selectedEdition === ed.edition_number
-                const isCurrent = idx === 0
+                const currentEdNum = getCurrentEditionNumber(editions)
+                const isCurrent = ed.edition_number === currentEdNum
                 return (
                   <button
                     key={ed.edition_number}
@@ -203,9 +227,10 @@ export default function TrackerPage() {
           ) : editions.length === 0 ? (
             <p className="text-text-muted text-xs">No editions found.</p>
           ) : (
-            editions.map((ed, idx) => {
+            editions.map((ed) => {
               const isActive = selectedEdition === ed.edition_number
-              const isCurrent = idx === 0
+              const currentEdNum = getCurrentEditionNumber(editions)
+              const isCurrent = ed.edition_number === currentEdNum
               return (
                 <button
                   key={ed.edition_number}

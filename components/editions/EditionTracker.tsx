@@ -390,35 +390,25 @@ export default function EditionTracker({
   const [addingTopic, setAddingTopic] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [rebuilding, setRebuilding] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Fetch on mount and when showRemoved / editionNumber changes
   useEffect(() => {
     setLoading(true)
-    if (issueId) {
-      fetch(`/api/editions/${issueId}/content?include_removed=${showRemoved}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.all) setItems(data.all as ContentItem[])
-          setLoading(false)
-        })
-        .catch(() => { toast.error('Failed to load content'); setLoading(false) })
-    } else {
-      // No issue yet — load directly from edition_content by edition_number
-      let query = supabase
-        .from('edition_content')
-        .select('*')
-        .eq('edition_number', editionNumber)
-        .order('created_at', { ascending: true })
-      if (!showRemoved) {
-        query = query.eq('removed', false)
-      }
-      query.then(({ data, error }) => {
-        if (error) { toast.error('Failed to load content'); setLoading(false); return }
-        setItems((data || []) as ContentItem[])
-        setLoading(false)
-      })
+    let query = supabase
+      .from('edition_content')
+      .select('*')
+      .eq('edition_number', editionNumber)
+      .order('created_at', { ascending: true })
+    if (!showRemoved) {
+      query = query.eq('removed', false)
     }
-  }, [issueId, editionNumber, showRemoved])
+    query.then(({ data, error }) => {
+      if (error) { toast.error('Failed to load content'); setLoading(false); return }
+      setItems((data || []) as ContentItem[])
+      setLoading(false)
+    })
+  }, [editionNumber, showRemoved])
 
   // Realtime subscription
   useEffect(() => {
@@ -688,7 +678,29 @@ export default function EditionTracker({
             <span className="text-[10px] text-text-muted tracking-widest uppercase">Live</span>
           </div>
         </div>
+
+        {/* Help toggle */}
+        <button
+          onClick={() => setShowHelp(h => !h)}
+          className="flex items-center justify-center min-h-[44px] min-w-[44px] text-text-muted text-sm hover:text-text-secondary transition-colors"
+          aria-label="Help"
+        >
+          &#9432;
+        </button>
       </div>
+
+      {/* Help panel */}
+      {showHelp && (
+        <div className="border border-gold-muted rounded p-4 text-xs text-text-secondary space-y-2 bg-bg-elevated">
+          <p className="text-gold font-serif text-sm mb-2">How to use the Tracker</p>
+          <p><span className="text-text-warm">+ Add</span> — tap to add a topic, instruction, or image to this edition. Choose Text for notes/topics, or Image to upload a photo or paste a link (Google Drive works too).</p>
+          <p><span className="text-text-warm">Rebuild Draft</span> — after adding content, tap this to regenerate the newsletter HTML. Dominic will get a Telegram message when it&apos;s ready (~30s).</p>
+          <p><span className="text-text-warm">Grouped view</span> — content organised by type (Topics, Instructions, Research, etc). Tap a section header to expand/collapse it.</p>
+          <p><span className="text-text-warm">Timeline view</span> — all items in chronological order, oldest first.</p>
+          <p><span className="text-text-warm">Remove / Restore</span> — remove an item to exclude it from the next draft. You can restore it any time.</p>
+          <p className="text-text-muted pt-1">Content added via Telegram also appears here in real time.</p>
+        </div>
+      )}
 
       {/* Add topic form */}
       {addingTopic && (
