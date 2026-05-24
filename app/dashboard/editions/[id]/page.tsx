@@ -156,12 +156,16 @@ export default function EditionPage() {
     setRebuilding(true)
     try {
       const res = await fetch(`/api/editions/${issue.id}/rebuild-html`, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
         toast.error(`Rebuild failed: ${body.error ?? res.status}`)
         return
       }
-      toast.success('Rebuilt successfully')
+      // Immediately apply the new HTML to state — no page refresh or realtime wait needed
+      if (body.html) {
+        setIssue(prev => prev ? { ...prev, html_content: body.html } : null)
+      }
+      toast.success('Rebuilt — preview updated')
     } catch {
       toast.error('Rebuild request failed')
     } finally {
@@ -188,10 +192,12 @@ export default function EditionPage() {
 
   const canDelete = ['draft', 'generating', 'paused', 'declined'].includes(issue.status)
 
-  // Dedup sections: if both 'deal' and 'deal_watch' exist, skip 'deal'
+  // Dedup sections: if both 'deal' and 'deal_watch' exist, skip 'deal'.
+  // Also exclude 'footer' from the general iterator — it has its own dedicated field.
   const hasDealWatch = (issue.sections || []).some(s => s.id === 'deal_watch')
   const displaySections = (issue.sections || []).filter(s => {
     if (s.id === 'deal' && hasDealWatch) return false
+    if (s.id === 'footer') return false
     return true
   })
 
@@ -354,6 +360,12 @@ export default function EditionPage() {
           {displaySections.length === 0 && (
             <p className="text-text-muted text-center py-12">No sections available.</p>
           )}
+
+          {/* Footer sign-off */}
+          <FooterField
+            issue={issue}
+            onSaved={(sections) => setIssue(prev => prev ? { ...prev, sections } : null)}
+          />
 
           {/* Visuals manager */}
           <VisualsManager
@@ -537,6 +549,71 @@ function NoteField({
         onFocus={() => { origRef.current = value }}
         placeholder="Preview text / note..."
       />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// FooterField
+// ---------------------------------------------------------------------------
+
+const DEFAULT_FOOTER_NOTE = "You know a name I should? Hit reply.\n\n— D"
+
+function FooterField({
+  issue,
+  onSaved,
+}: {
+  issue: NewsletterIssue
+  onSaved: (sections: Section[]) => void
+}) {
+  const existingFooter = (issue.sections || []).find(s => s.id === 'footer')
+  const [value, setValue] = useState(existingFooter?.content || DEFAULT_FOOTER_NOTE)
+  const [saving, setSaving] = useState(false)
+  const origRef = useRef(existingFooter?.content || DEFAULT_FOOTER_NOTE)
+
+  useEffect(() => {
+    const f = (issue.sections || []).find(s => s.id === 'footer')
+    const v = f?.content || DEFAULT_FOOTER_NOTE
+    setValue(v)
+    origRef.current = v
+  }, [issue.sections])
+
+  const handleBlur = async () => {
+    if (value === origRef.current) return
+    setSaving(true)
+    const currentSections = issue.sections || []
+    const hasFooter = currentSections.some(s => s.id === 'footer')
+    const updatedSections: Section[] = hasFooter
+      ? currentSections.map(s => s.id === 'footer' ? { ...s, content: value } : s)
+      : [...currentSections, { id: 'footer', title: 'Footer', content: value }]
+
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ sections: updatedSections })
+      .eq('id', issue.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to save footer'); return }
+    origRef.current = value
+    onSaved(updatedSections)
+    toast.success('Footer saved')
+  }
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-serif text-text-warm">Footer</h4>
+        {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+      </div>
+      <textarea
+        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+        rows={4}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onFocus={() => { origRef.current = value }}
+        placeholder={DEFAULT_FOOTER_NOTE}
+      />
+      <p className="text-text-muted text-xs mt-2">Sign-off text shown at the bottom of the newsletter. Press Save &amp; Rebuild to see it in the preview.</p>
     </div>
   )
 }

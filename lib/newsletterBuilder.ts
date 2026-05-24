@@ -401,8 +401,12 @@ export function renderImageBlock(imageUrl: string, caption?: string, alt?: strin
   return parts.join('')
 }
 
-export function renderFooter(issueNumber: number): string {
+const DEFAULT_FOOTER_NOTE = "You know a name I should? Hit reply.\n\n— D"
+
+export function renderFooter(footerNote?: string): string {
   const currentYear = new Date().getFullYear()
+  const note = (footerNote || DEFAULT_FOOTER_NOTE).trim()
+  const noteHtml = escapeHtml(note).replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
 
   const parts: string[] = []
   parts.push(
@@ -418,14 +422,7 @@ export function renderFooter(issueNumber: number): string {
   parts.push(
     `<p style="margin:0 0 20px 0;font-family:${FONT_SERIF};font-size:15px;` +
     `line-height:1.75;color:${COLOR_NAVY};">` +
-    `You know a name I should? Hit reply.<br><br><strong>&#8212; D</strong>` +
-    `</p>`
-  )
-
-  parts.push(
-    `<p style="margin:0 0 20px 0;font-family:${FONT_SANS};font-size:11px;` +
-    `color:${COLOR_MUTED};">` +
-    `Issue #${issueNumber}` +
+    noteHtml +
     `</p>`
   )
 
@@ -650,8 +647,9 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
     parts.push(renderImageBlock(bottomVisual.url, bottomVisual.caption, bottomVisual.alt))
   }
 
-  // 7. Footer
-  parts.push(renderFooter(issueNumber))
+  // 7. Footer — use custom sign-off from a 'footer' section if present
+  const footerSection = sectionsById['footer']
+  parts.push(renderFooter(footerSection?.content))
 
   const bodyHtml = parts.join('')
   return wrapDocument(bodyHtml)
