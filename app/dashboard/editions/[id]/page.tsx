@@ -236,12 +236,6 @@ export default function EditionPage() {
       {/* Action buttons */}
       {issue.status === 'draft' && (
         <div className="flex gap-2 mb-6 flex-wrap">
-          <button onClick={handleApprove} className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all min-h-[44px]">
-            Approve
-          </button>
-          <button onClick={handleDecline} className="border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-red-900 hover:text-red-800 transition-all min-h-[44px]">
-            Decline
-          </button>
           <button onClick={copyHTML} className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px]">
             Copy HTML
           </button>
