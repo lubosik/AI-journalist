@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
@@ -41,6 +41,9 @@ export default function EditionPage() {
   const [rebuilding, setRebuilding] = useState(false)
   const sectionRefs = useRef<Record<string, string>>({})
   const sectionDirtyRef = useRef<Record<string, string>>({})
+  const subjectLineRef = useRef<{ flush: () => Promise<void> }>(null)
+  const footerRef = useRef<{ flush: () => Promise<void> }>(null)
+  const dealsEditorRef = useRef<{ flush: () => Promise<void> }>(null)
 
   function parseIssue(data: Record<string, unknown>): NewsletterIssue {
     const sections = typeof data.sections === 'string'
@@ -137,7 +140,13 @@ export default function EditionPage() {
 
   const rebuildHTML = async () => {
     if (!issue) return
-    // Merge ALL dirty edits into one DB write to avoid snapshot-overwrite races
+    // Flush pending edits from all field components before reading DB
+    await Promise.all([
+      subjectLineRef.current?.flush(),
+      footerRef.current?.flush(),
+      dealsEditorRef.current?.flush(),
+    ])
+    // Merge ALL dirty section edits into one DB write to avoid snapshot-overwrite races
     const dirtyEntries = Object.entries(sectionDirtyRef.current)
     if (dirtyEntries.length > 0) {
       const mergedSections = (issue.sections || []).map(s =>
@@ -192,20 +201,12 @@ export default function EditionPage() {
 
   const canDelete = ['draft', 'generating', 'paused', 'declined'].includes(issue.status)
 
-  // Dedup sections: if both 'deal' and 'deal_watch' exist, skip 'deal'.
-  // Also exclude 'footer' from the general iterator — it has its own dedicated field.
-  const hasDealWatch = (issue.sections || []).some(s => s.id === 'deal_watch')
+  // Exclude deal/deal_watch (handled by DealsEditor) and footer (its own field).
   const displaySections = (issue.sections || []).filter(s => {
-    if (s.id === 'deal' && hasDealWatch) return false
+    if (s.id === 'deal' || s.id === 'deal_watch') return false
     if (s.id === 'footer') return false
     return true
   })
-
-  // Resolve display title for deal-related sections
-  function getSectionTitle(section: { id: string; title?: string }): string {
-    if (section.id === 'deal' || section.id === 'deal_watch') return 'Deals'
-    return section.title || section.id
-  }
 
   return (
     <div>
@@ -319,13 +320,13 @@ export default function EditionPage() {
           </div>
 
           {/* Headline */}
-          <SubjectLineField issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, subject_line: val } : null)} />
+          <SubjectLineField ref={subjectLineRef} issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, subject_line: val } : null)} />
 
           {/* Section editors */}
           {displaySections.map((section, idx) => (
             <div key={section.id || idx} className="card p-6">
               <div className="flex items-center justify-between mb-3">
-                <h4 className="font-serif text-text-warm">{getSectionTitle(section)}</h4>
+                <h4 className="font-serif text-text-warm">{section.title || section.id}</h4>
                 <div className="flex items-center gap-3">
                   {section.word_count && (
                     <span className="text-text-muted text-xs font-mono">{section.word_count} words</span>
@@ -358,8 +359,12 @@ export default function EditionPage() {
             <p className="text-text-muted text-center py-12">No sections available.</p>
           )}
 
+          {/* Deals — supply and demand lists */}
+          <DealsEditor ref={dealsEditorRef} />
+
           {/* Footer sign-off */}
           <FooterField
+            ref={footerRef}
             issue={issue}
             onSaved={(sections) => setIssue(prev => prev ? { ...prev, sections } : null)}
           />
@@ -446,24 +451,20 @@ export default function EditionPage() {
 // SubjectLineField
 // ---------------------------------------------------------------------------
 
-function SubjectLineField({
-  issue,
-  onSaved,
-}: {
-  issue: NewsletterIssue
-  onSaved: (val: string) => void
-}) {
+const SubjectLineField = forwardRef<
+  { flush: () => Promise<void> },
+  { issue: NewsletterIssue; onSaved: (val: string) => void }
+>(function SubjectLineField({ issue, onSaved }, ref) {
   const [value, setValue] = useState(issue.subject_line || '')
   const [saving, setSaving] = useState(false)
   const origRef = useRef(issue.subject_line || '')
 
-  // Resync when realtime update changes the issue prop (but only if not actively editing)
   useEffect(() => {
     setValue(issue.subject_line || '')
     origRef.current = issue.subject_line || ''
   }, [issue.subject_line])
 
-  const handleBlur = async () => {
+  const doSave = async () => {
     if (value === origRef.current) return
     setSaving(true)
     const { error } = await supabase
@@ -474,8 +475,9 @@ function SubjectLineField({
     if (error) { toast.error('Failed to save subject line'); return }
     origRef.current = value
     onSaved(value)
-    toast.success('Subject line saved')
   }
+
+  useImperativeHandle(ref, () => ({ flush: doSave }))
 
   return (
     <div className="card p-6">
@@ -488,13 +490,12 @@ function SubjectLineField({
         rows={2}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onBlur={handleBlur}
-        onFocus={() => { origRef.current = value }}
+        onBlur={doSave}
         placeholder="Newsletter subject line..."
       />
     </div>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // FooterField
@@ -502,13 +503,10 @@ function SubjectLineField({
 
 const DEFAULT_FOOTER_NOTE = "You know a name I should? Hit reply.\n\n— D"
 
-function FooterField({
-  issue,
-  onSaved,
-}: {
-  issue: NewsletterIssue
-  onSaved: (sections: Section[]) => void
-}) {
+const FooterField = forwardRef<
+  { flush: () => Promise<void> },
+  { issue: NewsletterIssue; onSaved: (sections: Section[]) => void }
+>(function FooterField({ issue, onSaved }, ref) {
   const existingFooter = (issue.sections || []).find(s => s.id === 'footer')
   const [value, setValue] = useState(existingFooter?.content || DEFAULT_FOOTER_NOTE)
   const [saving, setSaving] = useState(false)
@@ -521,7 +519,7 @@ function FooterField({
     origRef.current = v
   }, [issue.sections])
 
-  const handleBlur = async () => {
+  const doSave = async () => {
     if (value === origRef.current) return
     setSaving(true)
     const currentSections = issue.sections || []
@@ -538,8 +536,9 @@ function FooterField({
     if (error) { toast.error('Failed to save footer'); return }
     origRef.current = value
     onSaved(updatedSections)
-    toast.success('Footer saved')
   }
+
+  useImperativeHandle(ref, () => ({ flush: doSave }))
 
   return (
     <div className="card p-6">
@@ -552,14 +551,102 @@ function FooterField({
         rows={4}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onBlur={handleBlur}
-        onFocus={() => { origRef.current = value }}
+        onBlur={doSave}
         placeholder={DEFAULT_FOOTER_NOTE}
       />
       <p className="text-text-muted text-xs mt-2">Sign-off text shown at the bottom of the newsletter. Press Save &amp; Rebuild to see it in the preview.</p>
     </div>
   )
-}
+})
+
+// ---------------------------------------------------------------------------
+// DealsEditor — reads/writes pipeline_state.newsletter_edition_deals
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+const DealsEditor = forwardRef<{ flush: () => Promise<void> }, {}>(
+  function DealsEditor(_props, ref) {
+    const [supply, setSupply] = useState('')
+    const [demand, setDemand] = useState('')
+    const [loading, setLoading] = useState(true)
+    const [saving, setSaving] = useState(false)
+    const origRef = useRef({ supply: '', demand: '' })
+
+    useEffect(() => {
+      supabase
+        .from('pipeline_state')
+        .select('value')
+        .eq('key', 'newsletter_edition_deals')
+        .single()
+        .then(({ data }) => {
+          if (data?.value) {
+            const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+            const s = (parsed.supply || []).join('\n')
+            const d = (parsed.demand || []).join('\n')
+            setSupply(s)
+            setDemand(d)
+            origRef.current = { supply: s, demand: d }
+          }
+          setLoading(false)
+        })
+    }, [])
+
+    const doSave = async () => {
+      if (supply === origRef.current.supply && demand === origRef.current.demand) return
+      setSaving(true)
+      const supplyArr = supply.split('\n').map(s => s.trim()).filter(Boolean)
+      const demandArr = demand.split('\n').map(s => s.trim()).filter(Boolean)
+      await supabase
+        .from('pipeline_state')
+        .upsert(
+          { key: 'newsletter_edition_deals', value: JSON.stringify({ supply: supplyArr, demand: demandArr }) },
+          { onConflict: 'key' }
+        )
+      origRef.current = { supply, demand }
+      setSaving(false)
+    }
+
+    useImperativeHandle(ref, () => ({ flush: doSave }))
+
+    if (loading) {
+      return <div className="card p-6 text-text-muted text-sm animate-pulse">Loading deals...</div>
+    }
+
+    return (
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-serif text-text-warm">Deals</h4>
+          {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-text-muted text-xs tracking-wide uppercase font-sans mb-2">Supply</p>
+            <textarea
+              className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+              rows={6}
+              value={supply}
+              onChange={(e) => setSupply(e.target.value)}
+              onBlur={doSave}
+              placeholder={"One deal per line...\ne.g. Acme Fund LP interest — $50M"}
+            />
+          </div>
+          <div>
+            <p className="text-text-muted text-xs tracking-wide uppercase font-sans mb-2">Demand</p>
+            <textarea
+              className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+              rows={6}
+              value={demand}
+              onChange={(e) => setDemand(e.target.value)}
+              onBlur={doSave}
+              placeholder={"One deal per line...\ne.g. Family office seeking VC exposure — $20M"}
+            />
+          </div>
+        </div>
+        <p className="text-text-muted text-xs mt-2">One deal per line. Press Save &amp; Rebuild to update the preview.</p>
+      </div>
+    )
+  }
+)
 
 // ---------------------------------------------------------------------------
 // VisualsManager
