@@ -579,6 +579,7 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
   }
 
   // Build a placement index: placement_key -> Visual.
+  // Only index visuals that have a real URL — skip failed generation placeholders.
   // Supported placements:
   //   "top"              -> header banner image
   //   "after_<section>"  -> injected immediately after that section
@@ -586,7 +587,7 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
   //   "bottom"           -> injected after Deals, before footer
   const visualsByPlacement: Record<string, Visual> = {}
   for (const v of visuals) {
-    if (v.placement) visualsByPlacement[v.placement] = v
+    if (v.placement && v.url?.trim()) visualsByPlacement[v.placement] = v
   }
 
   const headerImageUrl = visualsByPlacement['top']?.url ?? null

@@ -587,7 +587,8 @@ function VisualsManager({
   const [adding, setAdding] = useState(false)
   const [deletingIdx, setDeletingIdx] = useState<number | null>(null)
 
-  const currentVisuals: Visual[] = issue.visuals || []
+  // Only show visuals that have an actual URL — filter out failed generation placeholders
+  const currentVisuals: Visual[] = (issue.visuals || []).filter(v => v.url?.trim())
 
   const saveVisuals = async (visuals: Visual[]): Promise<boolean> => {
     const { error } = await supabase
