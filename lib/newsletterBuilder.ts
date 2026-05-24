@@ -578,10 +578,18 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
     if (s.id) sectionsById[s.id] = s
   }
 
-  // Identify visuals by placement
-  const topVisual = findVisual(visuals, 'top')
-  const chartVisual = findVisual(visuals, 'after_section_2')
-  const headerImageUrl = topVisual?.url ?? null
+  // Build a placement index: placement_key -> Visual.
+  // Supported placements:
+  //   "top"              -> header banner image
+  //   "after_<section>"  -> injected immediately after that section
+  //   "before_deals"     -> injected before the Deals block
+  //   "bottom"           -> injected after Deals, before footer
+  const visualsByPlacement: Record<string, Visual> = {}
+  for (const v of visuals) {
+    if (v.placement) visualsByPlacement[v.placement] = v
+  }
+
+  const headerImageUrl = visualsByPlacement['top']?.url ?? null
 
   // Build TOC from fixed order, only sections that have data
   const tocSections: Array<{ id: string; title?: string }> = []
@@ -601,9 +609,9 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
     parts.push(renderContents(tocSections))
   }
 
-  // 3. Sections in fixed editorial order
-  for (let orderIdx = 0; orderIdx < SECTION_ORDER.length; orderIdx++) {
-    const [sid, defaultTitle, bgColor] = SECTION_ORDER[orderIdx]
+  // 3. Sections in fixed editorial order.  After each section, inject any
+  //    visual whose placement is "after_<section_id>".
+  for (const [sid, defaultTitle, bgColor] of SECTION_ORDER) {
     const sectionData = sectionsById[sid]
     if (!sectionData) continue
 
@@ -616,25 +624,32 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
       parts.push(renderSection(sid, title, content, bgColor))
     }
 
-    // Insert chart visual after market_pulse (orderIdx 2 = 3rd section, index 2)
-    if (orderIdx === 2 && chartVisual) {
-      parts.push(
-        renderImageBlock(
-          chartVisual.url,
-          chartVisual.caption,
-          chartVisual.alt || 'Market Pulse Chart',
-        )
-      )
+    // Inject visual placed after this section, if any.
+    const afterVisual = visualsByPlacement[`after_${sid}`]
+    if (afterVisual) {
+      parts.push(renderImageBlock(afterVisual.url, afterVisual.caption, afterVisual.alt))
     }
   }
 
-  // 4. Standalone Deals section
+  // 4. Optional image before the Deals block.
+  const beforeDealsVisual = visualsByPlacement['before_deals']
+  if (beforeDealsVisual) {
+    parts.push(renderImageBlock(beforeDealsVisual.url, beforeDealsVisual.caption, beforeDealsVisual.alt))
+  }
+
+  // 5. Standalone Deals section
   const supply = deals?.supply || []
   const demand = deals?.demand || []
   const sdHtml = renderSupplyDemandBlock(supply, demand)
   parts.push(renderSection('deals_block', 'Deals', sdHtml, '#f8f6f0'))
 
-  // 5. Footer
+  // 6. Optional image after Deals (bottom placement).
+  const bottomVisual = visualsByPlacement['bottom']
+  if (bottomVisual) {
+    parts.push(renderImageBlock(bottomVisual.url, bottomVisual.caption, bottomVisual.alt))
+  }
+
+  // 7. Footer
   parts.push(renderFooter(issueNumber))
 
   const bodyHtml = parts.join('')

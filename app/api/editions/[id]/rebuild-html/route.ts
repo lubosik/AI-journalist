@@ -95,7 +95,6 @@ export async function POST(
     .update({
       html_content: html,
       plain_text: plain,
-      updated_at: new Date().toISOString(),
     })
     .eq('id', params.id)
 

@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
-import type { NewsletterIssue, Visual } from '@/types/herald'
+import type { NewsletterIssue, Section, Visual } from '@/types/herald'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { toast } from 'sonner'
 
@@ -358,10 +358,8 @@ export default function EditionPage() {
           {/* Visuals manager */}
           <VisualsManager
             issue={issue}
-            onVisualsUpdated={(visuals) => {
-              setIssue(prev => prev ? { ...prev, visuals } : null)
-              rebuildHTML()
-            }}
+            onVisualsUpdated={(visuals) => setIssue(prev => prev ? { ...prev, visuals } : null)}
+            onRebuild={rebuildHTML}
           />
         </div>
       )}
@@ -547,18 +545,44 @@ function NoteField({
 // VisualsManager
 // ---------------------------------------------------------------------------
 
-const PLACEMENT_OPTIONS = ['top', 'after_section_2', 'after_section_4'] as const
-type Placement = typeof PLACEMENT_OPTIONS[number]
+// Human-readable labels for placement keys
+const SECTION_TITLE_MAP: Record<string, string> = {
+  tldr: 'TL;DR',
+  lead: 'The Lead',
+  market_pulse: 'Market Pulse',
+  angle: 'The Angle',
+}
+
+function buildPlacementOptions(sections: Section[]): Array<{ value: string; label: string }> {
+  const opts: Array<{ value: string; label: string }> = [
+    { value: 'top', label: 'Top — below headline' },
+  ]
+  // After each section that exists in the newsletter
+  const orderedIds = ['tldr', 'lead', 'market_pulse', 'angle']
+  const sectionIds = new Set(sections.map(s => s.id))
+  for (const id of orderedIds) {
+    if (sectionIds.has(id)) {
+      const title = sections.find(s => s.id === id)?.title || SECTION_TITLE_MAP[id] || id
+      opts.push({ value: `after_${id}`, label: `After ${title}` })
+    }
+  }
+  opts.push({ value: 'before_deals', label: 'Before Deals' })
+  opts.push({ value: 'bottom', label: 'Bottom — after Deals' })
+  return opts
+}
 
 function VisualsManager({
   issue,
   onVisualsUpdated,
+  onRebuild,
 }: {
   issue: NewsletterIssue
   onVisualsUpdated: (visuals: Visual[]) => void
+  onRebuild: () => void
 }) {
+  const placementOptions = buildPlacementOptions(issue.sections || [])
   const [addUrl, setAddUrl] = useState('')
-  const [addPlacement, setAddPlacement] = useState<Placement>('top')
+  const [addPlacement, setAddPlacement] = useState(placementOptions[0]?.value || 'top')
   const [addAlt, setAddAlt] = useState('')
   const [adding, setAdding] = useState(false)
   const [deletingIdx, setDeletingIdx] = useState<number | null>(null)
@@ -588,7 +612,8 @@ function VisualsManager({
     if (ok) {
       setAddUrl('')
       setAddAlt('')
-      toast.success('Visual added')
+      toast.success('Visual added — rebuilding…')
+      onRebuild()
     }
     setAdding(false)
   }
@@ -597,9 +622,16 @@ function VisualsManager({
     setDeletingIdx(idx)
     const updated = currentVisuals.filter((_, i) => i !== idx)
     const ok = await saveVisuals(updated)
-    if (ok) toast.success('Visual removed')
+    if (ok) {
+      toast.success('Visual removed — rebuilding…')
+      onRebuild()
+    }
     setDeletingIdx(null)
   }
+
+  // Human-friendly label for stored placement value
+  const placementLabel = (val: string) =>
+    placementOptions.find(o => o.value === val)?.label ?? val
 
   return (
     <div className="card p-6">
@@ -626,7 +658,7 @@ function VisualsManager({
               <div className="flex-1 min-w-0">
                 <p className="text-text-secondary text-xs font-mono truncate">{v.url}</p>
                 <p className="text-text-muted text-xs mt-0.5">
-                  <span className="text-gold-muted">{v.placement}</span>
+                  <span className="text-gold-muted">{placementLabel(v.placement)}</span>
                   {v.alt && <span className="ml-2">· {v.alt}</span>}
                 </p>
               </div>
@@ -657,11 +689,11 @@ function VisualsManager({
           <div className="flex gap-3">
             <select
               value={addPlacement}
-              onChange={(e) => setAddPlacement(e.target.value as Placement)}
+              onChange={(e) => setAddPlacement(e.target.value)}
               className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm focus:outline-none focus:border-gold-muted transition-colors"
             >
-              {PLACEMENT_OPTIONS.map(p => (
-                <option key={p} value={p}>{p}</option>
+              {placementOptions.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
             <input
