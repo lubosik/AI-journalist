@@ -153,8 +153,9 @@ export default function TrackerPage() {
             ) : editions.length === 0 ? (
               <p className="text-text-muted text-xs p-3">No editions found.</p>
             ) : (
-              editions.map(ed => {
+              editions.map((ed, idx) => {
                 const isActive = selectedEdition === ed.edition_number
+                const isCurrent = idx === 0
                 return (
                   <button
                     key={ed.edition_number}
@@ -167,7 +168,11 @@ export default function TrackerPage() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Edition {ed.edition_number}</span>
-                      {ed.item_count > 0 && (
+                      {isCurrent ? (
+                        <span className="text-[10px] font-mono text-gold border border-gold-muted px-1.5 py-0.5 rounded">
+                          CURRENT
+                        </span>
+                      ) : ed.item_count > 0 && (
                         <span className="text-[10px] font-mono text-text-muted border border-border-dark px-1.5 py-0.5 rounded">
                           {ed.item_count}
                         </span>
@@ -198,8 +203,9 @@ export default function TrackerPage() {
           ) : editions.length === 0 ? (
             <p className="text-text-muted text-xs">No editions found.</p>
           ) : (
-            editions.map(ed => {
+            editions.map((ed, idx) => {
               const isActive = selectedEdition === ed.edition_number
+              const isCurrent = idx === 0
               return (
                 <button
                   key={ed.edition_number}
@@ -212,7 +218,11 @@ export default function TrackerPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Edition {ed.edition_number}</span>
-                    {ed.item_count > 0 && (
+                    {isCurrent ? (
+                      <span className="text-[10px] font-mono text-gold border border-gold-muted px-1.5 py-0.5 rounded">
+                        CURRENT
+                      </span>
+                    ) : ed.item_count > 0 && (
                       <span className="text-[10px] font-mono text-text-muted border border-border-dark px-1.5 py-0.5 rounded">
                         {ed.item_count}
                       </span>

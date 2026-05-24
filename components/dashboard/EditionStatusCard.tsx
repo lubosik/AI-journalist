@@ -13,49 +13,53 @@ const toRoman = (n: number) => {
   return r
 }
 
-// Treat bare YYYY-MM-DD strings as local midnight to avoid UTC-offset day shift
-function parseLocalDate(dateStr: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return new Date(dateStr + 'T00:00:00')
-  }
-  return new Date(dateStr)
-}
+/**
+ * Compute the canonical deadline for a given base date: the Sunday of that week at 6pm EST.
+ * If the current time is already past that Sunday 6pm EST, returns the NEXT Sunday 6pm EST.
+ */
+function getNextDeadline(): Date {
+  // Get current time in EST
+  const nowEst = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const dow = nowEst.getDay() // 0 = Sunday
+  const daysUntilSunday = dow === 0 ? 0 : 7 - dow
 
-// Next Sunday on or after a given date
-function nextSunday(from: Date): Date {
-  const d = new Date(from)
-  const dow = d.getDay() // 0 = Sunday
-  if (dow === 0) return d
-  d.setDate(d.getDate() + (7 - dow))
-  return d
+  const candidate = new Date(nowEst)
+  candidate.setDate(candidate.getDate() + daysUntilSunday)
+  candidate.setHours(18, 0, 0, 0) // 6pm
+
+  // If we're already past this Sunday's 6pm, move to next Sunday
+  if (candidate <= nowEst) {
+    candidate.setDate(candidate.getDate() + 7)
+  }
+
+  // Convert back from EST to UTC for comparison against Date.now()
+  const estOffset = new Date().getTime() - new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).getTime()
+  return new Date(candidate.getTime() + estOffset)
 }
 
 function getDaysUntilTs(ts: Date): number {
   return Math.ceil((ts.getTime() - Date.now()) / 86400000)
 }
 
-// Format the lock timestamp as "Sunday, 24 May — 6:00 PM"
+// Format the deadline as "Sunday, 25 May — 6:00 PM EST"
 function formatDeadlineTs(ts: Date): string {
-  const day = ts.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
-  const time = ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
-    .replace('am', 'AM').replace('pm', 'PM')
-  return `${day} — ${time}`
+  return ts.toLocaleDateString('en-US', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    timeZone: 'America/New_York',
+  }) + ' — 6:00 PM EST'
 }
 
-function getWindow(lockedAfter: string | null, deadlineDate: string | null): string {
+function getWindow(nextDeadline: Date): string {
   const now = new Date()
-  if (lockedAfter && now > new Date(lockedAfter)) return 'closed'
-  if (deadlineDate) {
-    const draft = parseLocalDate(deadlineDate)
-    draft.setDate(draft.getDate() - 2)
-    draft.setHours(18, 0, 0, 0)
-    if (now >= draft) return 'drafting'
-  }
+  const msUntil = nextDeadline.getTime() - now.getTime()
+  const daysUntil = msUntil / 86400000
+  // Drafting window: last 2 days before deadline (Friday 6pm → Sunday 6pm)
+  if (daysUntil <= 2) return 'drafting'
   return 'research'
 }
 
 export function EditionStatusCard() {
-  const { currentEdition, nextPublishDate, editionLockedAfter, lastDraftDate, loading } = useEditionState()
+  const { currentEdition, lastDraftDate, loading } = useEditionState()
 
   if (loading) {
     return (
@@ -66,91 +70,46 @@ export function EditionStatusCard() {
     )
   }
 
-  const now = new Date()
-  const deadlineDate = nextPublishDate
+  const nextDeadline = getNextDeadline()
+  const days = getDaysUntilTs(nextDeadline)
+  const window_ = getWindow(nextDeadline)
 
-  // Deadline passes at the edition lock time (6pm EST Sunday), not midnight.
-  // Use editionLockedAfter if set; fall back to end-of-day on publish date.
-  const lockTime = editionLockedAfter
-    ? new Date(editionLockedAfter)
-    : deadlineDate
-      ? new Date(parseLocalDate(deadlineDate).getTime() + 23 * 3600 * 1000)
-      : null
-  const deadlinePassed = lockTime ? now > lockTime : false
-  const displayEdition = deadlinePassed ? currentEdition + 1 : currentEdition
-
-  // Current lock time — the actual Sunday 6pm deadline
-  // When deadline passed, compute the NEXT Sunday 6pm by adding 7 days
-  const currentLockTime = lockTime
-  const nextLockTime: Date | null = (() => {
-    if (!currentLockTime) return null
-    if (deadlinePassed) {
-      return new Date(currentLockTime.getTime() + 7 * 86400000)
-    }
-    return currentLockTime
-  })()
-
-  const days = nextLockTime ? getDaysUntilTs(nextLockTime) : null
-  const window_ = getWindow(editionLockedAfter, deadlineDate)
-
-  // Week of label: Sunday that starts the current edition's research week
-  const weekOf = nextLockTime
-    ? (() => {
-        // The research week starts 7 days before the Sunday deadline
-        const weekStart = new Date(nextLockTime.getTime() - 7 * 86400000)
-        return weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
-      })()
-    : null
+  // Week of label: Sunday that starts the current research week
+  const weekStart = new Date(nextDeadline.getTime() - 7 * 86400000)
+  const weekOf = weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
 
   const statusMap: Record<string, string> = {
     research: 'research',
     drafting: 'drafting',
-    closed: deadlinePassed ? 'published' : 'published',
   }
 
   return (
     <div className="card p-6">
       <div className="mb-6">
-        <p className="text-text-muted text-xs tracking-widest uppercase mb-1">
-          {deadlinePassed ? 'Next Edition' : 'Current Edition'}
-        </p>
-        <h2 className="font-serif text-5xl text-gold">EDITION {toRoman(displayEdition)}</h2>
-        {weekOf && (
-          <p className="text-text-muted text-xs mt-2">Week of {weekOf}</p>
-        )}
+        <p className="text-text-muted text-xs tracking-widest uppercase mb-1">Current Edition</p>
+        <h2 className="font-serif text-5xl text-gold">EDITION {toRoman(currentEdition || 1)}</h2>
+        <p className="text-text-muted text-xs mt-2">Week of {weekOf}</p>
       </div>
       <div className="mb-4">
-        <StatusBadge status={deadlinePassed ? 'research' : (statusMap[window_] || 'research')} />
+        <StatusBadge status={statusMap[window_] || 'research'} />
       </div>
       <div className="space-y-3 text-sm">
-        {days !== null && !deadlinePassed && (
-          <div className="flex justify-between">
-            <span className="text-text-muted">Days until deadline</span>
-            <span className="font-mono text-text-warm">{days > 0 ? days : 'Today'}</span>
-          </div>
-        )}
-        {nextLockTime && (
-          <div className="flex justify-between gap-4">
-            <span className="text-text-muted shrink-0">
-              {deadlinePassed ? 'Next deadline' : 'Deadline'}
-            </span>
-            <span className="font-mono text-text-warm text-xs text-right">
-              {formatDeadlineTs(nextLockTime)}
-            </span>
-          </div>
-        )}
+        <div className="flex justify-between">
+          <span className="text-text-muted">Days until deadline</span>
+          <span className="font-mono text-text-warm">{days > 0 ? days : 'Today'}</span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-text-muted shrink-0">Deadline</span>
+          <span className="font-mono text-text-warm text-xs text-right">
+            {formatDeadlineTs(nextDeadline)}
+          </span>
+        </div>
         {lastDraftDate && (
           <div className="flex justify-between">
-            <span className="text-text-muted">Last draft</span>
+            <span className="text-text-muted">Last draft generated</span>
             <span className="font-mono text-text-warm text-xs">
               {new Date(lastDraftDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
             </span>
-          </div>
-        )}
-        {deadlinePassed && (
-          <div className="flex justify-between">
-            <span className="text-text-muted">Edition {toRoman(currentEdition)}</span>
-            <span className="font-mono text-success-dark text-xs">Deadline passed</span>
           </div>
         )}
       </div>
@@ -162,10 +121,7 @@ export function EditionStatusCard() {
           <div
             className="h-full bg-gold rounded-full transition-all duration-500"
             style={{
-              width: deadlinePassed ? '0%'
-                : window_ === 'research' ? '25%'
-                : window_ === 'drafting' ? '50%'
-                : '75%'
+              width: window_ === 'research' ? '25%' : '50%'
             }}
           />
         </div>

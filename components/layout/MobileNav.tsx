@@ -12,6 +12,7 @@ const baseNavItems = [
   { href: '/dashboard/editions', label: 'Editions', icon: '◉' },
   { href: '/dashboard/tracker', label: 'Tracker', icon: '▦' },
   { href: '/dashboard/research', label: 'Research', icon: '◎' },
+  { href: '/dashboard/settings', label: 'Settings', icon: '◇' },
 ]
 
 export function MobileNav() {

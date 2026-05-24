@@ -33,6 +33,7 @@ const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   feedback_applied: { label: 'Feedback',       color: 'text-purple-400 border-purple-800' },
   voice_note:       { label: 'Voice Note',     color: 'text-sky-400 border-sky-800' },
   telegram_tip:     { label: 'Tip',            color: 'text-gold-muted border-gold-muted' },
+  image:            { label: 'Image',          color: 'text-pink-400 border-pink-800' },
 }
 
 const SECTION_ORDER = [
@@ -185,6 +186,21 @@ function CollapsibleSection({ type, items, onRemove, onRestore, showRemoved }: C
   )
 }
 
+// Convert a Google Drive share/view URL to a direct-embed URL
+function convertGoogleDriveUrl(url: string): string {
+  // Match /file/d/FILE_ID/view or /file/d/FILE_ID
+  const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
+  if (m) return `https://drive.google.com/uc?export=view&id=${m[1]}`
+  // Match id= param (open?id=...)
+  const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+  if (m2) return `https://drive.google.com/uc?export=view&id=${m2[1]}`
+  return url
+}
+
+function buildImgHtml(src: string, alt: string): string {
+  return `<img src="${src}" alt="${alt || 'Newsletter image'}" style="max-width:100%;height:auto;display:block;margin:16px auto;" />`
+}
+
 interface AddTopicFormProps {
   onSubmit: (topic: string, type: string) => Promise<void>
   onCancel: () => void
@@ -192,56 +208,171 @@ interface AddTopicFormProps {
 }
 
 function AddTopicForm({ onSubmit, onCancel, submitting }: AddTopicFormProps) {
+  const [mode, setMode] = useState<'text' | 'image'>('text')
   const [topic, setTopic] = useState('')
   const [topicType, setTopicType] = useState('topic')
+  // Image mode state
+  const [imageUrl, setImageUrl] = useState('')
+  const [imageAlt, setImageAlt] = useState('')
+  const [imagePreview, setImagePreview] = useState('')
+  const [imageUploading, setImageUploading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { return }
+    setImageUploading(true)
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const dataUrl = ev.target?.result as string
+      setImageUrl(dataUrl)
+      setImagePreview(dataUrl)
+      setImageUploading(false)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleUrlInput = (val: string) => {
+    setImageUrl(val)
+    const converted = val.includes('drive.google.com') ? convertGoogleDriveUrl(val) : val
+    setImagePreview(converted)
+  }
+
+  const handleTextSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!topic.trim()) return
     await onSubmit(topic.trim(), topicType)
   }
 
+  const handleImageSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!imageUrl.trim()) return
+    const embedSrc = imageUrl.startsWith('data:')
+      ? imageUrl
+      : (imageUrl.includes('drive.google.com') ? convertGoogleDriveUrl(imageUrl) : imageUrl)
+    const html = buildImgHtml(embedSrc, imageAlt)
+    await onSubmit(html, 'image')
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="card p-4 space-y-3 border border-gold-muted">
-      <div className="flex items-center gap-2 mb-1">
+    <div className="card p-4 space-y-3 border border-gold-muted">
+      <div className="flex items-center gap-3 mb-1">
         <span className="text-gold font-serif text-sm">Add Content</span>
-      </div>
-      <textarea
-        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
-        rows={3}
-        placeholder="Describe the topic, instruction, or content to add..."
-        value={topic}
-        onChange={e => setTopic(e.target.value)}
-        autoFocus
-      />
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <select
-          value={topicType}
-          onChange={e => setTopicType(e.target.value)}
-          className="bg-bg-elevated border border-border-dark rounded px-2 py-2.5 text-text-secondary text-xs focus:outline-none focus:border-gold-muted min-h-[44px]"
-        >
-          {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
-            <option key={key} value={key}>{cfg.label}</option>
-          ))}
-        </select>
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex border border-border-dark rounded overflow-hidden ml-auto">
           <button
             type="button"
-            onClick={onCancel}
-            className="flex-1 sm:flex-none border border-border-dark text-text-muted px-3 py-2.5 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all min-h-[44px]"
+            onClick={() => setMode('text')}
+            className={`px-3 py-1.5 text-[10px] tracking-widest uppercase transition-all ${
+              mode === 'text' ? 'bg-gold text-bg-primary' : 'text-text-muted hover:text-text-secondary'
+            }`}
           >
-            Cancel
+            Text
           </button>
           <button
-            type="submit"
-            disabled={submitting || !topic.trim()}
-            className="flex-1 sm:flex-none bg-gold text-bg-primary px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px]"
+            type="button"
+            onClick={() => setMode('image')}
+            className={`px-3 py-1.5 text-[10px] tracking-widest uppercase transition-all ${
+              mode === 'image' ? 'bg-gold text-bg-primary' : 'text-text-muted hover:text-text-secondary'
+            }`}
           >
-            {submitting ? 'Adding...' : 'Add'}
+            Image
           </button>
         </div>
       </div>
-    </form>
+
+      {mode === 'text' ? (
+        <form onSubmit={handleTextSubmit} className="space-y-3">
+          <textarea
+            className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+            rows={3}
+            placeholder="Describe the topic, instruction, or content to add..."
+            value={topic}
+            onChange={e => setTopic(e.target.value)}
+            autoFocus
+          />
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <select
+              value={topicType}
+              onChange={e => setTopicType(e.target.value)}
+              className="bg-bg-elevated border border-border-dark rounded px-2 py-2.5 text-text-secondary text-xs focus:outline-none focus:border-gold-muted min-h-[44px]"
+            >
+              {Object.entries(TYPE_CONFIG).filter(([k]) => k !== 'image').map(([key, cfg]) => (
+                <option key={key} value={key}>{cfg.label}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <button type="button" onClick={onCancel}
+                className="flex-1 sm:flex-none border border-border-dark text-text-muted px-3 py-2.5 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all min-h-[44px]">
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || !topic.trim()}
+                className="flex-1 sm:flex-none bg-gold text-bg-primary px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:opacity-90 transition-all disabled:opacity-40 min-h-[44px]">
+                {submitting ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={handleImageSubmit} className="space-y-3">
+          <p className="text-text-muted text-xs">Upload an image file or paste a URL (Google Drive links work too).</p>
+
+          {/* File upload */}
+          <label className="flex items-center justify-center gap-2 border border-dashed border-border-dark rounded p-4 cursor-pointer hover:border-gold-muted transition-all group">
+            <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+            <span className="text-text-muted text-xs tracking-wide group-hover:text-text-secondary transition-colors">
+              {imageUploading ? 'Reading file…' : '⬆ Click to upload image file'}
+            </span>
+          </label>
+
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-px bg-border-dark" />
+            <span className="text-text-muted text-[10px] uppercase tracking-widest">or paste URL</span>
+            <div className="flex-1 h-px bg-border-dark" />
+          </div>
+
+          <input
+            type="text"
+            placeholder="https://... or paste a Google Drive share link"
+            value={imageUrl.startsWith('data:') ? '' : imageUrl}
+            onChange={e => handleUrlInput(e.target.value)}
+            className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-xs font-mono focus:outline-none focus:border-gold-muted transition-colors"
+          />
+
+          <input
+            type="text"
+            placeholder="Alt text / caption (optional)"
+            value={imageAlt}
+            onChange={e => setImageAlt(e.target.value)}
+            className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-xs font-mono focus:outline-none focus:border-gold-muted transition-colors"
+          />
+
+          {/* Preview */}
+          {imagePreview && (
+            <div className="border border-border-dark rounded p-2 bg-bg-elevated">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imagePreview}
+                alt="preview"
+                className="max-h-40 max-w-full mx-auto rounded object-contain"
+                onError={() => setImagePreview('')}
+              />
+              <p className="text-[10px] text-text-muted text-center mt-1">Preview</p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 justify-end">
+            <button type="button" onClick={onCancel}
+              className="border border-border-dark text-text-muted px-3 py-2.5 rounded text-xs tracking-widest uppercase hover:border-gold-muted transition-all min-h-[44px]">
+              Cancel
+            </button>
+            <button type="submit" disabled={submitting || (!imageUrl.trim() && !imagePreview)}
+              className="bg-gold text-bg-primary px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:opacity-90 transition-all disabled:opacity-40 min-h-[44px]">
+              {submitting ? 'Adding…' : 'Add Image to Newsletter'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   )
 }
 
