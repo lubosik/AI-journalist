@@ -318,11 +318,8 @@ export default function EditionPage() {
             </button>
           </div>
 
-          {/* Subject Line field */}
+          {/* Headline */}
           <SubjectLineField issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, subject_line: val } : null)} />
-
-          {/* Note / Preview Text field */}
-          <NoteField issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, preview_text: val } : null)} />
 
           {/* Section editors */}
           {displaySections.map((section, idx) => (
@@ -483,7 +480,7 @@ function SubjectLineField({
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between mb-3">
-        <h4 className="font-serif text-text-warm">Subject Line</h4>
+        <h4 className="font-serif text-text-warm">Headline</h4>
         {saving && <span className="text-xs text-gold-muted">Saving...</span>}
       </div>
       <textarea
@@ -494,60 +491,6 @@ function SubjectLineField({
         onBlur={handleBlur}
         onFocus={() => { origRef.current = value }}
         placeholder="Newsletter subject line..."
-      />
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// NoteField (preview_text)
-// ---------------------------------------------------------------------------
-
-function NoteField({
-  issue,
-  onSaved,
-}: {
-  issue: NewsletterIssue
-  onSaved: (val: string) => void
-}) {
-  const [value, setValue] = useState(issue.preview_text || '')
-  const [saving, setSaving] = useState(false)
-  const origRef = useRef(issue.preview_text || '')
-
-  // Resync when realtime update changes the issue prop (but only if not actively editing)
-  useEffect(() => {
-    setValue(issue.preview_text || '')
-    origRef.current = issue.preview_text || ''
-  }, [issue.preview_text])
-
-  const handleBlur = async () => {
-    if (value === origRef.current) return
-    setSaving(true)
-    const { error } = await supabase
-      .from('newsletter_issues')
-      .update({ preview_text: value })
-      .eq('id', issue.id)
-    setSaving(false)
-    if (error) { toast.error('Failed to save note'); return }
-    origRef.current = value
-    onSaved(value)
-    toast.success('Note saved')
-  }
-
-  return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="font-serif text-text-warm">Note</h4>
-        {saving && <span className="text-xs text-gold-muted">Saving...</span>}
-      </div>
-      <textarea
-        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
-        rows={2}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={handleBlur}
-        onFocus={() => { origRef.current = value }}
-        placeholder="Preview text / note..."
       />
     </div>
   )
