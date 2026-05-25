@@ -1,9 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useActivityFeed } from '@/hooks/useActivityFeed'
+import { computeCurrentEdition } from '@/hooks/useEditionState'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '◆' },
@@ -101,16 +100,7 @@ function ActivityFeed() {
 
 export function Sidebar() {
   const pathname = usePathname()
-  const [editionNum, setEditionNum] = useState('...')
-
-  useEffect(() => {
-    supabase
-      .from('pipeline_state')
-      .select('key, value')
-      .eq('key', 'current_edition_number')
-      .single()
-      .then(({ data }) => { if (data) setEditionNum(data.value) })
-  }, [])
+  const editionNum = computeCurrentEdition()
 
   return (
     <div className="w-60 h-screen bg-bg-secondary border-r border-border-dark flex flex-col fixed left-0 top-0">
@@ -140,7 +130,7 @@ export function Sidebar() {
       <ActivityFeed />
       <div className="p-4 border-t border-border-dark">
         <p className="text-text-muted text-xs tracking-[0.15em] uppercase">
-          EDITION {toRoman(parseInt(editionNum) || 5)} - RESEARCHING
+          EDITION {toRoman(editionNum)} - RESEARCHING
         </p>
       </div>
     </div>
