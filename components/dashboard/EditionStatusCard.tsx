@@ -1,6 +1,8 @@
 'use client'
+import { useState, useEffect } from 'react'
 import { useEditionState } from '@/hooks/useEditionState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { supabase } from '@/lib/supabase'
 
 const toRoman = (n: number) => {
   if (n <= 0) return '?'
@@ -56,6 +58,27 @@ function getWindow(lockedAfter: string | null, deadlineDate: string | null): str
 
 export function EditionStatusCard() {
   const { currentEdition, nextPublishDate, editionLockedAfter, lastDraftDate, loading } = useEditionState()
+  const [draftConvState, setDraftConvState] = useState<string>('idle')
+
+  useEffect(() => {
+    supabase
+      .from('pipeline_state')
+      .select('value')
+      .eq('key', 'draft_conversation_state')
+      .single()
+      .then(({ data }) => setDraftConvState(data?.value || 'idle'))
+
+    const ch = supabase
+      .channel('draft_conv_state')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_state' }, (payload) => {
+        const row = payload.new as Record<string, string>
+        if (row?.key === 'draft_conversation_state') {
+          setDraftConvState(row.value || 'idle')
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
 
   if (loading) {
     return (
@@ -102,6 +125,14 @@ export function EditionStatusCard() {
       })()
     : null
 
+  const draftStateLabel: Record<string, string> = {
+    idle: '',
+    awaiting_approval: 'Awaiting Approval',
+    in_revision: 'In Revision',
+    approved: 'Approved',
+    drafting: 'Drafting',
+  }
+
   const statusMap: Record<string, string> = {
     research: 'research',
     drafting: 'drafting',
@@ -119,8 +150,13 @@ export function EditionStatusCard() {
           <p className="text-text-muted text-xs mt-2">Week of {weekOf}</p>
         )}
       </div>
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-2 flex-wrap">
         <StatusBadge status={deadlinePassed ? 'research' : (statusMap[window_] || 'research')} />
+        {draftConvState && draftConvState !== 'idle' && (
+          <span className="text-xs font-mono text-gold border border-gold-muted rounded px-2 py-0.5">
+            {draftStateLabel[draftConvState] || draftConvState}
+          </span>
+        )}
       </div>
       <div className="space-y-3 text-sm">
         {days !== null && !deadlinePassed && (
