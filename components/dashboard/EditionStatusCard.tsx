@@ -65,20 +65,12 @@ export function EditionStatusCard() {
   const [draftConvState, setDraftConvState] = useState<string>('idle')
 
   useEffect(() => {
-    supabase
-      .from('pipeline_state')
-      .select('value')
-      .eq('key', 'draft_conversation_state')
-      .single()
+    supabase.from('pipeline_state').select('value').eq('key', 'draft_conversation_state').single()
       .then(({ data }) => setDraftConvState(data?.value || 'idle'))
-
-    const ch = supabase
-      .channel('draft_conv_state')
+    const ch = supabase.channel('draft_conv_state')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_state' }, (payload) => {
         const row = payload.new as Record<string, string>
-        if (row?.key === 'draft_conversation_state') {
-          setDraftConvState(row.value || 'idle')
-        }
+        if (row?.key === 'draft_conversation_state') setDraftConvState(row.value || 'idle')
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -106,13 +98,6 @@ export function EditionStatusCard() {
     drafting: 'drafting',
   }
 
-  const draftStateLabel: Record<string, string> = {
-    awaiting_approval: 'Awaiting Approval',
-    in_revision: 'In Revision',
-    approved: 'Approved',
-    drafting: 'Drafting',
-  }
-
   return (
     <div className="card p-6">
       <div className="mb-6">
@@ -122,9 +107,9 @@ export function EditionStatusCard() {
       </div>
       <div className="mb-4 flex items-center gap-2 flex-wrap">
         <StatusBadge status={statusMap[window_] || 'research'} />
-        {draftConvState && draftConvState !== 'idle' && draftStateLabel[draftConvState] && (
+        {draftConvState && draftConvState !== 'idle' && (['awaiting_approval','in_revision','approved','drafting'].includes(draftConvState)) && (
           <span className="text-xs font-mono text-gold border border-gold-muted rounded px-2 py-0.5">
-            {draftStateLabel[draftConvState]}
+            {draftConvState.replace(/_/g, ' ')}
           </span>
         )}
       </div>

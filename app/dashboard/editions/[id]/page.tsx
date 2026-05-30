@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
-import type { NewsletterIssue } from '@/types/herald'
+import type { NewsletterIssue, Section, Visual } from '@/types/herald'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { toast } from 'sonner'
 
@@ -41,12 +41,18 @@ export default function EditionPage() {
   const [rebuilding, setRebuilding] = useState(false)
   const sectionRefs = useRef<Record<string, string>>({})
   const sectionDirtyRef = useRef<Record<string, string>>({})
+  const subjectLineRef = useRef<{ flush: () => Promise<void> }>(null)
+  const footerRef = useRef<{ flush: () => Promise<void> }>(null)
+  const dealsEditorRef = useRef<{ flush: () => Promise<void> }>(null)
 
   function parseIssue(data: Record<string, unknown>): NewsletterIssue {
     const sections = typeof data.sections === 'string'
       ? (() => { try { return JSON.parse(data.sections as string) } catch { return [] } })()
       : (data.sections || [])
-    return { ...data, sections } as unknown as NewsletterIssue
+    const visuals = typeof data.visuals === 'string'
+      ? (() => { try { return JSON.parse(data.visuals as string) } catch { return [] } })()
+      : (data.visuals || [])
+    return { ...data, sections, visuals } as unknown as NewsletterIssue
   }
 
   useEffect(() => {
@@ -134,7 +140,13 @@ export default function EditionPage() {
 
   const rebuildHTML = async () => {
     if (!issue) return
-    // Merge ALL dirty edits into one DB write to avoid snapshot-overwrite races
+    // Flush pending edits from all field components before reading DB
+    await Promise.all([
+      subjectLineRef.current?.flush(),
+      footerRef.current?.flush(),
+      dealsEditorRef.current?.flush(),
+    ])
+    // Merge ALL dirty section edits into one DB write to avoid snapshot-overwrite races
     const dirtyEntries = Object.entries(sectionDirtyRef.current)
     if (dirtyEntries.length > 0) {
       const mergedSections = (issue.sections || []).map(s =>
@@ -153,12 +165,16 @@ export default function EditionPage() {
     setRebuilding(true)
     try {
       const res = await fetch(`/api/editions/${issue.id}/rebuild-html`, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
         toast.error(`Rebuild failed: ${body.error ?? res.status}`)
         return
       }
-      toast.success('Rebuild queued — check Telegram in ~30s')
+      // Immediately apply the new HTML to state — no page refresh or realtime wait needed
+      if (body.html) {
+        setIssue(prev => prev ? { ...prev, html_content: body.html } : null)
+      }
+      toast.success('Rebuilt — preview updated')
     } catch {
       toast.error('Rebuild request failed')
     } finally {
@@ -184,6 +200,13 @@ export default function EditionPage() {
   if (!issue) return <p className="text-text-muted">Edition not found</p>
 
   const canDelete = ['draft', 'generating', 'paused', 'declined'].includes(issue.status)
+
+  // Exclude deal/deal_watch (handled by DealsEditor) and footer (its own field).
+  const displaySections = (issue.sections || []).filter(s => {
+    if (s.id === 'deal' || s.id === 'deal_watch') return false
+    if (s.id === 'footer') return false
+    return true
+  })
 
   return (
     <div>
@@ -236,12 +259,6 @@ export default function EditionPage() {
       {/* Action buttons */}
       {issue.status === 'draft' && (
         <div className="flex gap-2 mb-6 flex-wrap">
-          <button onClick={handleApprove} className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all min-h-[44px]">
-            Approve
-          </button>
-          <button onClick={handleDecline} className="border border-border-dark text-text-muted px-4 py-2 rounded text-xs tracking-widest uppercase hover:border-red-900 hover:text-red-800 transition-all min-h-[44px]">
-            Decline
-          </button>
           <button onClick={copyHTML} className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px]">
             Copy HTML
           </button>
@@ -298,10 +315,15 @@ export default function EditionPage() {
               disabled={rebuilding}
               className="bg-gold text-bg-primary px-5 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px] w-full sm:w-auto"
             >
-              {rebuilding ? 'Queuing...' : 'Save & Rebuild'}
+              {rebuilding ? 'Building...' : 'Save & Rebuild'}
             </button>
           </div>
-          {(issue.sections || []).map((section, idx) => (
+
+          {/* Headline */}
+          <SubjectLineField ref={subjectLineRef} issue={issue} onSaved={(val) => setIssue(prev => prev ? { ...prev, subject_line: val } : null)} />
+
+          {/* Section editors */}
+          {displaySections.map((section, idx) => (
             <div key={section.id || idx} className="card p-6">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-serif text-text-warm">{section.title || section.id}</h4>
@@ -327,17 +349,32 @@ export default function EditionPage() {
                   const orig = sectionRefs.current[section.id]
                   if (newVal !== orig) {
                     saveSection(section.id, newVal)
-                    // sectionDirtyRef is cleared by saveSection only on success,
-                    // so failed saves remain tracked for retry via Save & Rebuild
                   }
                 }}
                 onFocus={(e) => { sectionRefs.current[section.id] = e.target.value }}
               />
             </div>
           ))}
-          {(!issue.sections || issue.sections.length === 0) && (
+          {displaySections.length === 0 && (
             <p className="text-text-muted text-center py-12">No sections available.</p>
           )}
+
+          {/* Deals — supply and demand lists */}
+          <DealsEditor ref={dealsEditorRef} />
+
+          {/* Footer sign-off */}
+          <FooterField
+            ref={footerRef}
+            issue={issue}
+            onSaved={(sections) => setIssue(prev => prev ? { ...prev, sections } : null)}
+          />
+
+          {/* Visuals manager */}
+          <VisualsManager
+            issue={issue}
+            onVisualsUpdated={(visuals) => setIssue(prev => prev ? { ...prev, visuals } : null)}
+            onRebuild={rebuildHTML}
+          />
         </div>
       )}
 
@@ -410,9 +447,396 @@ export default function EditionPage() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// SubjectLineField
+// ---------------------------------------------------------------------------
+
+const SubjectLineField = forwardRef<
+  { flush: () => Promise<void> },
+  { issue: NewsletterIssue; onSaved: (val: string) => void }
+>(function SubjectLineField({ issue, onSaved }, ref) {
+  const [value, setValue] = useState(issue.subject_line || '')
+  const [saving, setSaving] = useState(false)
+  const origRef = useRef(issue.subject_line || '')
+
+  useEffect(() => {
+    setValue(issue.subject_line || '')
+    origRef.current = issue.subject_line || ''
+  }, [issue.subject_line])
+
+  const doSave = async () => {
+    if (value === origRef.current) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ subject_line: value })
+      .eq('id', issue.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to save subject line'); return }
+    origRef.current = value
+    onSaved(value)
+  }
+
+  useImperativeHandle(ref, () => ({ flush: doSave }))
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-serif text-text-warm">Headline</h4>
+        {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+      </div>
+      <textarea
+        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+        rows={2}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={doSave}
+        placeholder="Newsletter subject line..."
+      />
+    </div>
+  )
+})
+
+// ---------------------------------------------------------------------------
+// FooterField
+// ---------------------------------------------------------------------------
+
+const DEFAULT_FOOTER_NOTE = "You know a name I should? Hit reply.\n\n— D"
+
+const FooterField = forwardRef<
+  { flush: () => Promise<void> },
+  { issue: NewsletterIssue; onSaved: (sections: Section[]) => void }
+>(function FooterField({ issue, onSaved }, ref) {
+  const existingFooter = (issue.sections || []).find(s => s.id === 'footer')
+  const [value, setValue] = useState(existingFooter?.content || DEFAULT_FOOTER_NOTE)
+  const [saving, setSaving] = useState(false)
+  const origRef = useRef(existingFooter?.content || DEFAULT_FOOTER_NOTE)
+
+  useEffect(() => {
+    const f = (issue.sections || []).find(s => s.id === 'footer')
+    const v = f?.content || DEFAULT_FOOTER_NOTE
+    setValue(v)
+    origRef.current = v
+  }, [issue.sections])
+
+  const doSave = async () => {
+    if (value === origRef.current) return
+    setSaving(true)
+    const currentSections = issue.sections || []
+    const hasFooter = currentSections.some(s => s.id === 'footer')
+    const updatedSections: Section[] = hasFooter
+      ? currentSections.map(s => s.id === 'footer' ? { ...s, content: value } : s)
+      : [...currentSections, { id: 'footer', title: 'Footer', content: value }]
+
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ sections: updatedSections })
+      .eq('id', issue.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to save footer'); return }
+    origRef.current = value
+    onSaved(updatedSections)
+  }
+
+  useImperativeHandle(ref, () => ({ flush: doSave }))
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-serif text-text-warm">Footer</h4>
+        {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+      </div>
+      <textarea
+        className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+        rows={4}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={doSave}
+        placeholder={DEFAULT_FOOTER_NOTE}
+      />
+      <p className="text-text-muted text-xs mt-2">Sign-off text shown at the bottom of the newsletter. Press Save &amp; Rebuild to see it in the preview.</p>
+    </div>
+  )
+})
+
+// ---------------------------------------------------------------------------
+// DealsEditor — reads/writes pipeline_state.newsletter_edition_deals
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+const DealsEditor = forwardRef<{ flush: () => Promise<void> }, {}>(
+  function DealsEditor(_props, ref) {
+    const [supply, setSupply] = useState('')
+    const [demand, setDemand] = useState('')
+    const [loading, setLoading] = useState(true)
+    const [saving, setSaving] = useState(false)
+    const origRef = useRef({ supply: '', demand: '' })
+
+    useEffect(() => {
+      supabase
+        .from('pipeline_state')
+        .select('value')
+        .eq('key', 'newsletter_edition_deals')
+        .single()
+        .then(({ data }) => {
+          if (data?.value) {
+            const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+            const s = (parsed.supply || []).join('\n')
+            const d = (parsed.demand || []).join('\n')
+            setSupply(s)
+            setDemand(d)
+            origRef.current = { supply: s, demand: d }
+          }
+          setLoading(false)
+        })
+    }, [])
+
+    const doSave = async () => {
+      if (supply === origRef.current.supply && demand === origRef.current.demand) return
+      setSaving(true)
+      const supplyArr = supply.split('\n').map(s => s.trim()).filter(Boolean)
+      const demandArr = demand.split('\n').map(s => s.trim()).filter(Boolean)
+      await supabase
+        .from('pipeline_state')
+        .upsert(
+          { key: 'newsletter_edition_deals', value: JSON.stringify({ supply: supplyArr, demand: demandArr }) },
+          { onConflict: 'key' }
+        )
+      origRef.current = { supply, demand }
+      setSaving(false)
+    }
+
+    useImperativeHandle(ref, () => ({ flush: doSave }))
+
+    if (loading) {
+      return <div className="card p-6 text-text-muted text-sm animate-pulse">Loading deals...</div>
+    }
+
+    return (
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-serif text-text-warm">Deals</h4>
+          {saving && <span className="text-xs text-gold-muted">Saving...</span>}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-text-muted text-xs tracking-wide uppercase font-sans mb-2">Supply</p>
+            <textarea
+              className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+              rows={6}
+              value={supply}
+              onChange={(e) => setSupply(e.target.value)}
+              onBlur={doSave}
+              placeholder={"One deal per line...\ne.g. Acme Fund LP interest — $50M"}
+            />
+          </div>
+          <div>
+            <p className="text-text-muted text-xs tracking-wide uppercase font-sans mb-2">Demand</p>
+            <textarea
+              className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted resize-none transition-colors"
+              rows={6}
+              value={demand}
+              onChange={(e) => setDemand(e.target.value)}
+              onBlur={doSave}
+              placeholder={"One deal per line...\ne.g. Family office seeking VC exposure — $20M"}
+            />
+          </div>
+        </div>
+        <p className="text-text-muted text-xs mt-2">One deal per line. Press Save &amp; Rebuild to update the preview.</p>
+      </div>
+    )
+  }
+)
+
+// ---------------------------------------------------------------------------
+// VisualsManager
+// ---------------------------------------------------------------------------
+
+// Human-readable labels for placement keys
+const SECTION_TITLE_MAP: Record<string, string> = {
+  tldr: 'TL;DR',
+  lead: 'The Lead',
+  market_pulse: 'Market Pulse',
+  angle: 'The Angle',
+}
+
+function buildPlacementOptions(sections: Section[]): Array<{ value: string; label: string }> {
+  const opts: Array<{ value: string; label: string }> = [
+    { value: 'top', label: 'Top — below headline' },
+  ]
+  // After each section that exists in the newsletter
+  const orderedIds = ['tldr', 'lead', 'market_pulse', 'angle']
+  const sectionIds = new Set(sections.map(s => s.id))
+  for (const id of orderedIds) {
+    if (sectionIds.has(id)) {
+      const title = sections.find(s => s.id === id)?.title || SECTION_TITLE_MAP[id] || id
+      opts.push({ value: `after_${id}`, label: `After ${title}` })
+    }
+  }
+  opts.push({ value: 'before_deals', label: 'Before Deals' })
+  opts.push({ value: 'bottom', label: 'Bottom — after Deals' })
+  return opts
+}
+
+function VisualsManager({
+  issue,
+  onVisualsUpdated,
+  onRebuild,
+}: {
+  issue: NewsletterIssue
+  onVisualsUpdated: (visuals: Visual[]) => void
+  onRebuild: () => void
+}) {
+  const placementOptions = buildPlacementOptions(issue.sections || [])
+  const [addUrl, setAddUrl] = useState('')
+  const [addPlacement, setAddPlacement] = useState(placementOptions[0]?.value || 'top')
+  const [addAlt, setAddAlt] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [deletingIdx, setDeletingIdx] = useState<number | null>(null)
+
+  // Only show visuals that have an actual URL — filter out failed generation placeholders
+  const currentVisuals: Visual[] = (issue.visuals || []).filter(v => v.url?.trim())
+
+  const saveVisuals = async (visuals: Visual[]): Promise<boolean> => {
+    const { error } = await supabase
+      .from('newsletter_issues')
+      .update({ visuals })
+      .eq('id', issue.id)
+    if (error) { toast.error('Failed to save visuals'); return false }
+    onVisualsUpdated(visuals)
+    return true
+  }
+
+  const handleAdd = async () => {
+    if (!addUrl.trim()) { toast.error('Image URL is required'); return }
+    setAdding(true)
+    const newVisual: Visual = {
+      placement: addPlacement,
+      url: addUrl.trim(),
+      alt: addAlt.trim() || undefined,
+    }
+    const updated = [...currentVisuals, newVisual]
+    const ok = await saveVisuals(updated)
+    if (ok) {
+      setAddUrl('')
+      setAddAlt('')
+      toast.success('Visual added — rebuilding…')
+      onRebuild()
+    }
+    setAdding(false)
+  }
+
+  const handleDelete = async (idx: number) => {
+    setDeletingIdx(idx)
+    const updated = currentVisuals.filter((_, i) => i !== idx)
+    const ok = await saveVisuals(updated)
+    if (ok) {
+      toast.success('Visual removed — rebuilding…')
+      onRebuild()
+    }
+    setDeletingIdx(null)
+  }
+
+  // Human-friendly label for stored placement value
+  const placementLabel = (val: string) =>
+    placementOptions.find(o => o.value === val)?.label ?? val
+
+  return (
+    <div className="card p-6">
+      <h4 className="font-serif text-text-warm mb-4">Visuals</h4>
+
+      {/* Current visuals list */}
+      {currentVisuals.length === 0 && (
+        <p className="text-text-muted text-sm mb-4">No visuals attached.</p>
+      )}
+      {currentVisuals.length > 0 && (
+        <div className="space-y-3 mb-6">
+          {currentVisuals.map((v, idx) => (
+            <div key={idx} className="flex items-center gap-3 bg-bg-elevated rounded p-3 border border-border-dark">
+              {/* Thumbnail */}
+              <div className="shrink-0 w-14 h-10 rounded overflow-hidden bg-bg-primary border border-border-dark flex items-center justify-center">
+                <img
+                  src={v.url}
+                  alt={v.alt || 'visual'}
+                  className="object-cover w-full h-full"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-text-secondary text-xs font-mono truncate">{v.url}</p>
+                <p className="text-text-muted text-xs mt-0.5">
+                  <span className="text-gold-muted">{placementLabel(v.placement)}</span>
+                  {v.alt && <span className="ml-2">· {v.alt}</span>}
+                </p>
+              </div>
+              {/* Delete */}
+              <button
+                onClick={() => handleDelete(idx)}
+                disabled={deletingIdx === idx}
+                className="shrink-0 text-xs px-3 py-1.5 rounded border border-red-900 text-red-700 hover:bg-red-900 hover:text-red-300 tracking-widest uppercase transition-all disabled:opacity-40"
+              >
+                {deletingIdx === idx ? '...' : 'Remove'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add visual form */}
+      <div className="border-t border-border-dark pt-4">
+        <p className="text-text-muted text-xs mb-3 tracking-wide uppercase font-sans">Add Image</p>
+        <div className="space-y-3">
+          <input
+            type="url"
+            value={addUrl}
+            onChange={(e) => setAddUrl(e.target.value)}
+            placeholder="Image URL (https://...)"
+            className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
+          />
+          <div className="flex gap-3">
+            <select
+              value={addPlacement}
+              onChange={(e) => setAddPlacement(e.target.value)}
+              className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm focus:outline-none focus:border-gold-muted transition-colors"
+            >
+              {placementOptions.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={addAlt}
+              onChange={(e) => setAddAlt(e.target.value)}
+              placeholder="Alt text (optional)"
+              className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
+            />
+          </div>
+          <button
+            onClick={handleAdd}
+            disabled={adding || !addUrl.trim()}
+            className="bg-gold text-bg-primary px-5 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px]"
+          >
+            {adding ? 'Adding...' : 'Add Visual'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RawHTMLTab
+// ---------------------------------------------------------------------------
+
 function RawHTMLTab({ issue, onSave }: { issue: NewsletterIssue; onSave: (html: string) => void }) {
   const [value, setValue] = useState(issue.html_content || '')
   const [dirty, setDirty] = useState(false)
+
+  // Resync when a rebuild updates html_content via realtime (but not if user is editing)
+  useEffect(() => {
+    if (!dirty) setValue(issue.html_content || '')
+  }, [issue.html_content, dirty])
 
   return (
     <div className="card p-4 md:p-6">
