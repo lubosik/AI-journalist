@@ -79,7 +79,7 @@ export async function DELETE(req: Request) {
   const { error } = await supabase
     .from('edition_topics')
     .delete()
-    .eq('id', id)
+    .eq('id', parseInt(id) || id)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ deleted: true })
