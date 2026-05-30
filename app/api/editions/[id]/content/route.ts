@@ -10,7 +10,7 @@ function serviceClient() {
 
 function authCheck() {
   const cookie = cookies().get('herald_auth')
-  return cookie?.value === process.env.DASHBOARD_PASSWORD
+  return cookie?.value === 'authenticated'
 }
 
 export async function GET(
