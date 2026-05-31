@@ -1,17 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
-// Edition 1 deadline: Sunday 24 May 2026, 6 PM EDT = 22:00 UTC.
-// Each subsequent Sunday's 6pm deadline = next edition.
-export function computeCurrentEdition(): number {
-  const edition1DeadlineMs = new Date('2026-05-24T22:00:00Z').getTime()
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000
-  const weeksPast = Math.floor((Date.now() - edition1DeadlineMs) / msPerWeek)
-  return Math.max(1, weeksPast + 2)
-}
-
 export interface EditionState {
   currentEdition: number
+  editionDate: string | null
   nextPublishDate: string | null
   editionLockedAfter: string | null
   lastDraftDate: string | null
@@ -21,6 +13,7 @@ export interface EditionState {
 export function useEditionState() {
   const [state, setState] = useState<EditionState>({
     currentEdition: 0,
+    editionDate: null,
     nextPublishDate: null,
     editionLockedAfter: null,
     lastDraftDate: null,
@@ -29,27 +22,41 @@ export function useEditionState() {
 
   useEffect(() => {
     async function fetch() {
-      const [psRes, draftRes] = await Promise.all([
+      const [psRes, issueRes] = await Promise.all([
         supabase
           .from('pipeline_state')
           .select('key, value')
           .in('key', ['current_edition_number', 'next_publish_date', 'edition_locked_after']),
         supabase
           .from('newsletter_issues')
-          .select('updated_at')
+          .select('issue_number, edition_date, week_start, updated_at')
           .in('status', ['draft', 'approved', 'published'])
-          .order('updated_at', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(1),
       ])
 
       const ps = psRes.data || []
-      const lastDraft = draftRes.data?.[0]?.updated_at || null
+      const latestIssue = issueRes.data?.[0] || null
+
+      // Prefer the live issue_number from newsletter_issues; fall back to
+      // the pipeline_state key if no issue exists yet.
+      const psEdition = parseInt(
+        ps.find((r: { key: string; value: string }) => r.key === 'current_edition_number')?.value || '0'
+      )
+      const currentEdition = latestIssue?.issue_number
+        ? parseInt(String(latestIssue.issue_number))
+        : psEdition || 1
+
+      // edition_date is the Sunday publish date; week_start is the Monday.
+      // Use whichever is available to show the correct week label.
+      const editionDate = latestIssue?.edition_date || latestIssue?.week_start || null
 
       setState({
-        currentEdition: computeCurrentEdition(),
+        currentEdition,
+        editionDate,
         nextPublishDate: ps.find((r: { key: string; value: string }) => r.key === 'next_publish_date')?.value || null,
         editionLockedAfter: ps.find((r: { key: string; value: string }) => r.key === 'edition_locked_after')?.value || null,
-        lastDraftDate: lastDraft,
+        lastDraftDate: latestIssue?.updated_at || null,
         loading: false,
       })
     }

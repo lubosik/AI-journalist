@@ -4,15 +4,16 @@ import { supabase } from '@/lib/supabase'
 
 export function DraftApprovalBanner() {
   const [draftState, setDraftState] = useState<string>('idle')
+  const [hasActiveDraft, setHasActiveDraft] = useState(false)
 
   useEffect(() => {
     async function fetchState() {
-      const { data } = await supabase
-        .from('pipeline_state')
-        .select('value')
-        .eq('key', 'draft_conversation_state')
-        .single()
-      setDraftState(data?.value || 'idle')
+      const [stateRes, draftRes] = await Promise.all([
+        supabase.from('pipeline_state').select('value').eq('key', 'draft_conversation_state').single(),
+        supabase.from('newsletter_issues').select('id').in('status', ['draft', 'reviewed']).limit(1),
+      ])
+      setDraftState(stateRes.data?.value || 'idle')
+      setHasActiveDraft((draftRes.data?.length ?? 0) > 0)
     }
     fetchState()
 
@@ -40,7 +41,10 @@ export function DraftApprovalBanner() {
     )
   }
 
-  if (draftState === 'awaiting_approval' || draftState === 'in_revision') {
+  // Only show the topics-for-approval warning when no draft exists yet.
+  // Once a draft is in the system the warning is stale — Dom is reviewing
+  // the actual draft, not the proposed topic list.
+  if ((draftState === 'awaiting_approval' || draftState === 'in_revision') && !hasActiveDraft) {
     return (
       <div className="mb-6 border border-gold rounded p-4 bg-bg-elevated">
         <div className="flex items-start gap-3">

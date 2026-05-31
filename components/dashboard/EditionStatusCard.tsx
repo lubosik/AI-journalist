@@ -61,7 +61,7 @@ function getWindow(nextDeadline: Date): string {
 }
 
 export function EditionStatusCard() {
-  const { currentEdition, lastDraftDate, loading } = useEditionState()
+  const { currentEdition, editionDate, lastDraftDate, loading } = useEditionState()
   const [draftConvState, setDraftConvState] = useState<string>('idle')
 
   useEffect(() => {
@@ -89,9 +89,17 @@ export function EditionStatusCard() {
   const days = getDaysUntilTs(nextDeadline)
   const window_ = getWindow(nextDeadline)
 
-  // Week of label: Sunday that starts the current research week
-  const weekStart = new Date(nextDeadline.getTime() - 7 * 86400000)
-  const weekOf = weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+  // Week of label: prefer the edition_date from DB (reliable); fall back to
+  // deriving from nextDeadline only when no DB date is available.
+  const weekOf = (() => {
+    if (editionDate) {
+      return new Date(editionDate + 'T12:00:00Z').toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long',
+      })
+    }
+    // Fallback: show the Sunday the edition publishes on, not the prior Sunday
+    return nextDeadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'America/New_York' })
+  })()
 
   const statusMap: Record<string, string> = {
     research: 'research',
