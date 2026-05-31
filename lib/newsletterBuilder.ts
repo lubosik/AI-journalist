@@ -146,14 +146,6 @@ export function renderHeader(
     `<tr><td style="padding:40px 24px 24px 24px;text-align:center;">`
   )
 
-  if (headerImageUrl) {
-    const safeUrl = escapeAttr(headerImageUrl)
-    parts.push(
-      `<img src="${safeUrl}" alt="Newsletter header" ` +
-      `style="display:block;margin:0 auto 20px auto;max-width:100%;height:auto;" />`
-    )
-  }
-
   parts.push(
     `<h1 style="margin:0;border-bottom:3px solid ${COLOR_PRIMARY};padding-bottom:16px;` +
     `font-family:${FONT_SERIF};font-size:36px;font-weight:900;color:${COLOR_PRIMARY};letter-spacing:0;">` +
@@ -172,6 +164,15 @@ export function renderHeader(
     `${safeSubject}` +
     `</p>`
   )
+
+  // "Top — below headline" placement: image appears after the subject line
+  if (headerImageUrl) {
+    const safeUrl = escapeAttr(headerImageUrl)
+    parts.push(
+      `<img src="${safeUrl}" alt="Newsletter header" ` +
+      `style="display:block;margin:20px auto 0 auto;max-width:100%;height:auto;" />`
+    )
+  }
 
   parts.push('</td></tr></table></td></tr></table>')
   return parts.join('')

@@ -742,7 +742,7 @@ function VisualsManager({
     placementOptions.find(o => o.value === val)?.label ?? val
 
   return (
-    <div className="card p-6">
+    <div className="card p-6 overflow-hidden">
       <h4 className="font-serif text-text-warm mb-4">Visuals</h4>
 
       {/* Current visuals list */}
@@ -752,7 +752,7 @@ function VisualsManager({
       {currentVisuals.length > 0 && (
         <div className="space-y-3 mb-6">
           {currentVisuals.map((v, idx) => (
-            <div key={idx} className="flex items-center gap-3 bg-bg-elevated rounded p-3 border border-border-dark">
+            <div key={idx} className="flex items-center gap-3 bg-bg-elevated rounded p-3 border border-border-dark min-w-0">
               {/* Thumbnail */}
               <div className="shrink-0 w-14 h-10 rounded overflow-hidden bg-bg-primary border border-border-dark flex items-center justify-center">
                 <img
@@ -794,11 +794,11 @@ function VisualsManager({
             placeholder="Image URL (https://...)"
             className="w-full bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
           />
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <select
               value={addPlacement}
               onChange={(e) => setAddPlacement(e.target.value)}
-              className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm focus:outline-none focus:border-gold-muted transition-colors"
+              className="w-full sm:flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm focus:outline-none focus:border-gold-muted transition-colors"
             >
               {placementOptions.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
@@ -809,7 +809,7 @@ function VisualsManager({
               value={addAlt}
               onChange={(e) => setAddAlt(e.target.value)}
               placeholder="Alt text (optional)"
-              className="flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
+              className="w-full sm:flex-1 bg-bg-elevated border border-border-dark rounded p-3 text-text-secondary text-sm font-mono focus:outline-none focus:border-gold-muted transition-colors"
             />
           </div>
           <button
