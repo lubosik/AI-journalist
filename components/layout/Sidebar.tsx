@@ -3,7 +3,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useActivityFeed } from '@/hooks/useActivityFeed'
-import { computeCurrentEdition } from '@/hooks/useEditionState'
+import { useEditionState } from '@/hooks/useEditionState'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '◆' },
@@ -101,7 +101,8 @@ function ActivityFeed() {
 
 export function Sidebar() {
   const pathname = usePathname()
-  const editionNum = computeCurrentEdition()
+  const { currentEdition } = useEditionState()
+  const editionNum = currentEdition || 1
 
   return (
     <div className="w-60 h-screen bg-bg-secondary border-r border-border-dark flex flex-col fixed left-0 top-0">
