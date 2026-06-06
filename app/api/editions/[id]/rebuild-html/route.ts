@@ -12,7 +12,15 @@ export async function POST(
     return Response.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const supabase = createServiceClient()
+  let supabase: ReturnType<typeof createServiceClient>
+  try {
+    supabase = createServiceClient()
+  } catch (initErr) {
+    const msg = initErr instanceof Error ? initErr.message : String(initErr)
+    return Response.json({ error: `Service client init failed: ${msg}` }, { status: 500 })
+  }
+
+  try {
 
   // Fetch full issue
   const { data: issue, error: fetchError } = await supabase
@@ -100,4 +108,9 @@ export async function POST(
   }
 
   return Response.json({ success: true, html })
+
+  } catch (outerErr) {
+    const msg = outerErr instanceof Error ? outerErr.message : String(outerErr)
+    return Response.json({ error: `Unexpected error: ${msg}` }, { status: 500 })
+  }
 }

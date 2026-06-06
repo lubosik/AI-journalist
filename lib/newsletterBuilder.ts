@@ -54,8 +54,6 @@ const MAX_WIDTH = '600px'
 const SECTION_ORDER: Array<[string, string, string]> = [
   ['tldr', 'TL;DR', '#1a1a2e'],
   ['lead', 'The Lead', '#ffffff'],
-  ['market_pulse', 'Market Pulse', '#f8f6f0'],
-  ['angle', 'The Angle', '#ffffff'],
 ]
 
 // ---------------------------------------------------------------------------
@@ -534,25 +532,27 @@ export function buildPlainText(
     lines.push('')
   }
 
-  // Standalone deals block
+  // Standalone deals block — only include when there is at least one item
   const supply = deals?.supply || []
   const demand = deals?.demand || []
-  lines.push('[ DEALS ]')
-  lines.push('-'.repeat(40))
-  lines.push('Supply:')
-  if (supply.length) {
-    for (const item of supply) lines.push(`  - ${item}`)
-  } else {
-    lines.push('  (none listed)')
+  if (supply.length > 0 || demand.length > 0) {
+    lines.push('[ DEALS ]')
+    lines.push('-'.repeat(40))
+    lines.push('Supply:')
+    if (supply.length) {
+      for (const item of supply) lines.push(`  - ${item}`)
+    } else {
+      lines.push('  (none listed)')
+    }
+    lines.push('')
+    lines.push('Demand:')
+    if (demand.length) {
+      for (const item of demand) lines.push(`  - ${item}`)
+    } else {
+      lines.push('  (none listed)')
+    }
+    lines.push('')
   }
-  lines.push('')
-  lines.push('Demand:')
-  if (demand.length) {
-    for (const item of demand) lines.push(`  - ${item}`)
-  } else {
-    lines.push('  (none listed)')
-  }
-  lines.push('')
 
   lines.push('='.repeat(60))
   lines.push('The Secondaries Intelligence Report')
@@ -636,11 +636,13 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
     parts.push(renderImageBlock(beforeDealsVisual.url, beforeDealsVisual.caption, beforeDealsVisual.alt))
   }
 
-  // 5. Standalone Deals section
+  // 5. Standalone Deals section — only render when there is at least one item
   const supply = deals?.supply || []
   const demand = deals?.demand || []
-  const sdHtml = renderSupplyDemandBlock(supply, demand)
-  parts.push(renderSection('deals_block', 'Deals', sdHtml, '#f8f6f0'))
+  if (supply.length > 0 || demand.length > 0) {
+    const sdHtml = renderSupplyDemandBlock(supply, demand)
+    parts.push(renderSection('deals_block', 'Deals', sdHtml, '#f8f6f0'))
+  }
 
   // 6. Optional image after Deals (bottom placement).
   const bottomVisual = visualsByPlacement['bottom']
