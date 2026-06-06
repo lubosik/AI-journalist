@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const EDITION_CACHE_KEY = 'herald_current_edition'
@@ -27,6 +27,8 @@ export function useEditionState() {
     lastDraftDate: null,
     loading: true,
   })
+
+  const channelName = useRef(`edition-state-${Math.random().toString(36).substr(2, 9)}`)
 
   useEffect(() => {
     let active = true
@@ -67,7 +69,7 @@ export function useEditionState() {
 
     fetchState()
     const channel = supabase
-      .channel('edition-state')
+      .channel(channelName.current)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pipeline_state' },

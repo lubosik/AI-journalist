@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Playfair_Display, Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'sonner'
+import { RegisterServiceWorker } from '@/components/RegisterServiceWorker'
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="AI Journalist" />
       </head>
       <body className="bg-bg-primary text-text-warm font-sans antialiased">
+        <RegisterServiceWorker />
         {children}
         <Toaster
           theme="dark"
