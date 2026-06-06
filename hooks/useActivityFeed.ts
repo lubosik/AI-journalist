@@ -44,7 +44,9 @@ export function useActivityFeed(limit = 50) {
         for (const topic of (topicRes.data || [])) {
           initial.push({ id: `topic-${topic.id}`, type: 'RESEARCH', message: `Edition ${topic.edition_number} topic: ${topic.topic}`, timestamp: topic.created_at })
         }
+        const HIDDEN_TRIGGERS = new Set(['health_check'])
         for (const trigger of (triggerRes.data || [])) {
+          if (HIDDEN_TRIGGERS.has(trigger.trigger_type)) continue
           initial.push({ id: `trigger-${trigger.id}`, type: 'DRAFT_START', message: `${trigger.trigger_type.replace(/_/g, ' ')} - ${trigger.status}`, timestamp: trigger.created_at })
         }
         initial.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -85,6 +87,7 @@ export function useActivityFeed(limit = 50) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_triggers' }, (payload) => {
         const trigger = (payload.new || payload.old) as Record<string, unknown>
+        if (String(trigger.trigger_type || '') === 'health_check') return
         addEvent({ id: genId(), type: 'DRAFT_START', message: `${String(trigger.trigger_type || 'pipeline action').replace(/_/g, ' ')} - ${String(trigger.status || payload.eventType).toLowerCase()}`, timestamp: (trigger.processed_at as string) || (trigger.created_at as string) || new Date().toISOString() })
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'morning_brief_log' }, (payload) => {
