@@ -1,12 +1,5 @@
 import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
-
-function serviceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  )
-}
+import { createServiceClient } from '@/lib/supabase-server'
 
 function authCheck() {
   const cookie = cookies().get('herald_auth')
@@ -19,7 +12,7 @@ export async function GET(
 ) {
   if (!authCheck()) return Response.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const supabase = serviceClient()
+  const supabase = createServiceClient()
   const { data: issue } = await supabase
     .from('newsletter_issues')
     .select('issue_number')
@@ -67,7 +60,7 @@ export async function DELETE(
 ) {
   if (!authCheck()) return Response.json({ error: 'Unauthorised' }, { status: 401 })
   const { content_id, reason } = await req.json()
-  const supabase = serviceClient()
+  const supabase = createServiceClient()
   await supabase.from('edition_content').update({
     removed: true,
     removed_at: new Date().toISOString(),
@@ -84,7 +77,7 @@ export async function POST(
   const { topic, topic_type, priority } = await req.json()
   if (!topic?.trim()) return Response.json({ error: 'Topic required' }, { status: 400 })
 
-  const supabase = serviceClient()
+  const supabase = createServiceClient()
   const { data: issue } = await supabase
     .from('newsletter_issues')
     .select('issue_number')

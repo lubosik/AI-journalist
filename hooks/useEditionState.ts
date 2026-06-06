@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
+const EDITION_CACHE_KEY = 'herald_current_edition'
+
+export function computeCurrentEdition(): number {
+  if (typeof window === 'undefined') return 0
+  const cached = Number(window.localStorage.getItem(EDITION_CACHE_KEY))
+  return Number.isFinite(cached) ? cached : 0
+}
+
 export interface EditionState {
   currentEdition: number
   editionDate: string | null
@@ -21,7 +29,9 @@ export function useEditionState() {
   })
 
   useEffect(() => {
-    async function fetch() {
+    let active = true
+
+    async function fetchState() {
       const [psRes, issueRes] = await Promise.all([
         supabase
           .from('pipeline_state')
@@ -29,7 +39,7 @@ export function useEditionState() {
           .in('key', ['current_edition_number', 'next_publish_date', 'edition_locked_after']),
         supabase
           .from('newsletter_issues')
-          .select('issue_number, edition_date, week_start, updated_at')
+          .select('edition_date, week_start, created_at')
           .in('status', ['draft', 'approved', 'published'])
           .order('created_at', { ascending: false })
           .limit(1),
@@ -37,30 +47,48 @@ export function useEditionState() {
 
       const ps = psRes.data || []
       const latestIssue = issueRes.data?.[0] || null
-
-      // Prefer the live issue_number from newsletter_issues; fall back to
-      // the pipeline_state key if no issue exists yet.
-      const psEdition = parseInt(
-        ps.find((r: { key: string; value: string }) => r.key === 'current_edition_number')?.value || '0'
+      const currentEdition = Number(
+        ps.find((row: { key: string; value: string }) => row.key === 'current_edition_number')?.value
       )
-      const currentEdition = latestIssue?.issue_number
-        ? parseInt(String(latestIssue.issue_number))
-        : psEdition || 1
 
-      // edition_date is the Sunday publish date; week_start is the Monday.
-      // Use whichever is available to show the correct week label.
-      const editionDate = latestIssue?.edition_date || latestIssue?.week_start || null
-
+      if (!active) return
+      if (Number.isFinite(currentEdition)) {
+        window.localStorage.setItem(EDITION_CACHE_KEY, String(currentEdition))
+      }
       setState({
-        currentEdition,
-        editionDate,
-        nextPublishDate: ps.find((r: { key: string; value: string }) => r.key === 'next_publish_date')?.value || null,
-        editionLockedAfter: ps.find((r: { key: string; value: string }) => r.key === 'edition_locked_after')?.value || null,
-        lastDraftDate: latestIssue?.updated_at || null,
+        currentEdition: Number.isFinite(currentEdition) ? currentEdition : 0,
+        editionDate: latestIssue?.edition_date || latestIssue?.week_start || null,
+        nextPublishDate: ps.find((row: { key: string; value: string }) => row.key === 'next_publish_date')?.value || null,
+        editionLockedAfter: ps.find((row: { key: string; value: string }) => row.key === 'edition_locked_after')?.value || null,
+        lastDraftDate: latestIssue?.created_at || null,
         loading: false,
       })
     }
-    fetch()
+
+    fetchState()
+    const channel = supabase
+      .channel('edition-state')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pipeline_state' },
+        (payload) => {
+          const row = payload.new as { key?: string }
+          if (['current_edition_number', 'next_publish_date', 'edition_locked_after'].includes(row.key || '')) {
+            fetchState()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'newsletter_issues' },
+        () => fetchState()
+      )
+      .subscribe()
+
+    return () => {
+      active = false
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   return state

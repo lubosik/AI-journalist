@@ -15,53 +15,32 @@ const toRoman = (n: number) => {
   return r
 }
 
-/**
- * Compute the canonical deadline for a given base date: the Sunday of that week at 6pm EST.
- * If the current time is already past that Sunday 6pm EST, returns the NEXT Sunday 6pm EST.
- */
-function getNextDeadline(): Date {
-  // Get current time in EST
-  const nowEst = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  const dow = nowEst.getDay() // 0 = Sunday
-  const daysUntilSunday = dow === 0 ? 0 : 7 - dow
-
-  const candidate = new Date(nowEst)
-  candidate.setDate(candidate.getDate() + daysUntilSunday)
-  candidate.setHours(18, 0, 0, 0) // 6pm
-
-  // If we're already past this Sunday's 6pm, move to next Sunday
-  if (candidate <= nowEst) {
-    candidate.setDate(candidate.getDate() + 7)
-  }
-
-  // Convert back from EST to UTC for comparison against Date.now()
-  const estOffset = new Date().getTime() - new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).getTime()
-  return new Date(candidate.getTime() + estOffset)
-}
-
 function getDaysUntilTs(ts: Date): number {
-  return Math.ceil((ts.getTime() - Date.now()) / 86400000)
+  return Math.max(0, Math.ceil((ts.getTime() - Date.now()) / 86400000))
 }
 
-// Format the deadline as "Sunday, 25 May — 6:00 PM EST"
+function parsePipelineDate(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T12:00:00-04:00`)
+  }
+  return new Date(value)
+}
+
 function formatDeadlineTs(ts: Date): string {
   return ts.toLocaleDateString('en-US', {
-    weekday: 'long', day: 'numeric', month: 'long',
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     timeZone: 'America/New_York',
-  }) + ' — 6:00 PM EST'
+  })
 }
 
-function getWindow(nextDeadline: Date): string {
-  const now = new Date()
-  const msUntil = nextDeadline.getTime() - now.getTime()
-  const daysUntil = msUntil / 86400000
-  // Drafting window: last 2 days before deadline (Friday 6pm → Sunday 6pm)
-  if (daysUntil <= 2) return 'drafting'
+function getWindow(publishDate: Date, lockedAfter: string | null): string {
+  if (lockedAfter && Date.now() >= new Date(lockedAfter).getTime()) return 'drafting'
+  if (publishDate.getTime() <= Date.now()) return 'drafting'
   return 'research'
 }
 
 export function EditionStatusCard() {
-  const { currentEdition, editionDate, lastDraftDate, loading } = useEditionState()
+  const { currentEdition, nextPublishDate, editionLockedAfter, lastDraftDate, loading } = useEditionState()
   const [draftConvState, setDraftConvState] = useState<string>('idle')
 
   useEffect(() => {
@@ -85,21 +64,10 @@ export function EditionStatusCard() {
     )
   }
 
-  const nextDeadline = getNextDeadline()
-  const days = getDaysUntilTs(nextDeadline)
-  const window_ = getWindow(nextDeadline)
-
-  // Week of label: prefer the edition_date from DB (reliable); fall back to
-  // deriving from nextDeadline only when no DB date is available.
-  const weekOf = (() => {
-    if (editionDate) {
-      return new Date(editionDate + 'T12:00:00Z').toLocaleDateString('en-GB', {
-        day: 'numeric', month: 'long',
-      })
-    }
-    // Fallback: show the Sunday the edition publishes on, not the prior Sunday
-    return nextDeadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'America/New_York' })
-  })()
+  const publishDate = nextPublishDate ? parsePipelineDate(nextPublishDate) : null
+  const validPublishDate = publishDate && !Number.isNaN(publishDate.getTime()) ? publishDate : null
+  const days = validPublishDate ? getDaysUntilTs(validPublishDate) : null
+  const window_ = validPublishDate ? getWindow(validPublishDate, editionLockedAfter) : 'research'
 
   const statusMap: Record<string, string> = {
     research: 'research',
@@ -111,7 +79,9 @@ export function EditionStatusCard() {
       <div className="mb-6">
         <p className="text-text-muted text-xs tracking-widest uppercase mb-1">Current Edition</p>
         <h2 className="font-serif text-5xl text-gold">EDITION {toRoman(currentEdition || 1)}</h2>
-        <p className="text-text-muted text-xs mt-2">Week of {weekOf}</p>
+        <p className="text-text-muted text-xs mt-2">
+          {validPublishDate ? `Publishes ${formatDeadlineTs(validPublishDate)}` : 'Publish date not configured'}
+        </p>
       </div>
       <div className="mb-4 flex items-center gap-2 flex-wrap">
         <StatusBadge status={statusMap[window_] || 'research'} />
@@ -124,12 +94,14 @@ export function EditionStatusCard() {
       <div className="space-y-3 text-sm">
         <div className="flex justify-between">
           <span className="text-text-muted">Days until deadline</span>
-          <span className="font-mono text-text-warm">{days > 0 ? days : 'Today'}</span>
+          <span className="font-mono text-text-warm">
+            {days === null ? 'Not set' : days > 0 ? days : 'Today'}
+          </span>
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-text-muted shrink-0">Deadline</span>
           <span className="font-mono text-text-warm text-xs text-right">
-            {formatDeadlineTs(nextDeadline)}
+            {validPublishDate ? formatDeadlineTs(validPublishDate) : 'Not set'}
           </span>
         </div>
         {lastDraftDate && (

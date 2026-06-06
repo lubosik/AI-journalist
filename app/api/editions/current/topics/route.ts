@@ -1,19 +1,12 @@
 import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
-
-function serviceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  )
-}
+import { createServiceClient } from '@/lib/supabase-server'
 
 function authCheck() {
   const cookie = cookies().get('herald_auth')
   return cookie?.value === 'authenticated'
 }
 
-async function getCurrentEditionNumber(supabase: ReturnType<typeof serviceClient>): Promise<number> {
+async function getCurrentEditionNumber(supabase: ReturnType<typeof createServiceClient>): Promise<number> {
   const { data } = await supabase
     .from('pipeline_state')
     .select('value')
@@ -25,7 +18,7 @@ async function getCurrentEditionNumber(supabase: ReturnType<typeof serviceClient
 export async function GET() {
   if (!authCheck()) return Response.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const supabase = serviceClient()
+  const supabase = createServiceClient()
   const editionNumber = await getCurrentEditionNumber(supabase)
 
   const { data: topics } = await supabase
@@ -41,7 +34,7 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!authCheck()) return Response.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const supabase = serviceClient()
+  const supabase = createServiceClient()
   const editionNumber = await getCurrentEditionNumber(supabase)
   const body = await req.json()
   const { topic, topic_type = 'topic', priority = 5 } = body
@@ -75,7 +68,7 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id')
   if (!id) return Response.json({ error: 'id is required' }, { status: 400 })
 
-  const supabase = serviceClient()
+  const supabase = createServiceClient()
   const { error } = await supabase
     .from('edition_topics')
     .delete()

@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase-server'
 
 export async function DELETE(
   _req: Request,
@@ -10,10 +10,7 @@ export async function DELETE(
     return Response.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  )
+  const supabase = createServiceClient()
 
   const { error } = await supabase
     .from('newsletter_issues')

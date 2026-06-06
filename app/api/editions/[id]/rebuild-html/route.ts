@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
 import { buildNewsletterHTML, buildPlainText } from '@/lib/newsletterBuilder'
+import { createServiceClient } from '@/lib/supabase-server'
 import type { Section, Visual } from '@/lib/newsletterBuilder'
 
 export async function POST(
@@ -12,10 +12,7 @@ export async function POST(
     return Response.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createServiceClient()
 
   // Fetch full issue
   const { data: issue, error: fetchError } = await supabase
@@ -101,14 +98,6 @@ export async function POST(
   if (saveError) {
     return Response.json({ error: `Save failed: ${saveError.message}` }, { status: 500 })
   }
-
-  // Still upsert pipeline_state so Python's Telegram notification fires
-  await supabase
-    .from('pipeline_state')
-    .upsert(
-      { key: 'rebuild_html_request', value: JSON.stringify({ edition_id: params.id }) },
-      { onConflict: 'key' }
-    )
 
   return Response.json({ success: true, html })
 }

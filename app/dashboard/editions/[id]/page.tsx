@@ -39,6 +39,7 @@ export default function EditionPage() {
   const [deleting, setDeleting] = useState(false)
   const [savingSection, setSavingSection] = useState<string | null>(null)
   const [rebuilding, setRebuilding] = useState(false)
+  const [queueingAction, setQueueingAction] = useState<'approve' | 'decline' | null>(null)
   const sectionRefs = useRef<Record<string, string>>({})
   const sectionDirtyRef = useRef<Record<string, string>>({})
   const subjectLineRef = useRef<{ flush: () => Promise<void> }>(null)
@@ -82,18 +83,44 @@ export default function EditionPage() {
     toast.success('HTML copied to clipboard')
   }
 
+  const queuePipelineAction = async (triggerType: 'approve_edition' | 'decline_edition') => {
+    if (!issue) return
+    const res = await fetch('/api/pipeline/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trigger_type: triggerType,
+        payload: { issue_id: issue.id, edition_number: issue.issue_number },
+      }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error || 'Could not queue action')
+  }
+
   const handleApprove = async () => {
     if (!issue) return
-    const { error } = await supabase.from('newsletter_issues').update({ status: 'approved' }).eq('id', issue.id)
-    if (error) { toast.error('Failed to approve'); return }
-    toast.success(`Edition ${issue.issue_number} approved`)
+    setQueueingAction('approve')
+    try {
+      await queuePipelineAction('approve_edition')
+      toast.success(`Edition ${issue.issue_number} approval queued`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to approve')
+    } finally {
+      setQueueingAction(null)
+    }
   }
 
   const handleDecline = async () => {
     if (!issue || !confirm('Decline this edition?')) return
-    const { error } = await supabase.from('newsletter_issues').update({ status: 'declined' }).eq('id', issue.id)
-    if (error) { toast.error('Failed to decline'); return }
-    toast.success('Edition declined')
+    setQueueingAction('decline')
+    try {
+      await queuePipelineAction('decline_edition')
+      toast.success('Edition decline queued')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to decline')
+    } finally {
+      setQueueingAction(null)
+    }
   }
 
   const handleDelete = async () => {
@@ -259,6 +286,20 @@ export default function EditionPage() {
       {/* Action buttons */}
       {issue.status === 'draft' && (
         <div className="flex gap-2 mb-6 flex-wrap">
+          <button
+            onClick={handleApprove}
+            disabled={queueingAction !== null}
+            className="bg-gold text-bg-primary px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all min-h-[44px] disabled:opacity-40"
+          >
+            {queueingAction === 'approve' ? 'Queuing...' : 'Approve and Publish'}
+          </button>
+          <button
+            onClick={handleDecline}
+            disabled={queueingAction !== null}
+            className="border border-red-900 text-red-500 px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-red-900 hover:text-red-200 transition-all min-h-[44px] disabled:opacity-40"
+          >
+            {queueingAction === 'decline' ? 'Queuing...' : 'Decline'}
+          </button>
           <button onClick={copyHTML} className="border border-gold-muted text-gold px-4 py-2 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all min-h-[44px]">
             Copy HTML
           </button>

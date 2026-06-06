@@ -33,39 +33,64 @@ export default function EditionsPage() {
   const [contentCounts, setContentCounts] = useState<ContentCountsMap>({})
 
   useEffect(() => {
-    supabase
-      .from('newsletter_issues')
-      .select('*')
-      .order('issue_number', { ascending: false })
-      .limit(20)
-      .then(({ data }) => {
-        if (data) {
-          const issues = data as NewsletterIssue[]
-          setIssues(issues)
+    let active = true
 
-          // Fetch content counts for these editions
-          const editionNumbers = issues.map(i => i.issue_number)
-          if (editionNumbers.length > 0) {
-            supabase
-              .from('edition_content')
-              .select('edition_number, content_type')
-              .in('edition_number', editionNumbers)
-              .eq('removed', false)
-              .then(({ data: contentData }) => {
-                if (!contentData) return
-                const map: ContentCountsMap = {}
-                contentData.forEach((row: { edition_number: number; content_type: string }) => {
-                  if (!map[row.edition_number]) map[row.edition_number] = { topics: 0, deals: 0, research: 0 }
-                  if (row.content_type === 'topic') map[row.edition_number].topics++
-                  else if (row.content_type === 'deal') map[row.edition_number].deals++
-                  else if (row.content_type === 'research') map[row.edition_number].research++
-                })
-                setContentCounts(map)
-              })
-          }
-        }
+    async function loadIssues() {
+      const { data } = await supabase
+        .from('newsletter_issues')
+        .select('*')
+        .order('issue_number', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (!active) return
+      const loadedIssues = (data || []) as NewsletterIssue[]
+      setIssues(loadedIssues)
+
+      const editionNumbers = loadedIssues.map(i => i.issue_number)
+      if (editionNumbers.length === 0) {
+        setContentCounts({})
         setLoading(false)
-      })
+        return
+      }
+
+      const { data: contentData } = await supabase
+        .from('edition_content')
+        .select('edition_number, content_type')
+        .in('edition_number', editionNumbers)
+        .eq('removed', false)
+
+      if (!active) return
+      const map: ContentCountsMap = {}
+      for (const row of contentData || []) {
+        if (!map[row.edition_number]) map[row.edition_number] = { topics: 0, deals: 0, research: 0 }
+        if (row.content_type === 'topic') map[row.edition_number].topics++
+        else if (row.content_type === 'deal') map[row.edition_number].deals++
+        else if (row.content_type === 'research') map[row.edition_number].research++
+      }
+      setContentCounts(map)
+      setLoading(false)
+    }
+
+    loadIssues()
+    const channel = supabase
+      .channel('editions-list')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'newsletter_issues' },
+        () => loadIssues()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'edition_content' },
+        () => loadIssues()
+      )
+      .subscribe()
+
+    return () => {
+      active = false
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const handleDelete = async (e: React.MouseEvent, issue: NewsletterIssue) => {
