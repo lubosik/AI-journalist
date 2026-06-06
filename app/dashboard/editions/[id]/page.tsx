@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { NewsletterIssue, Section, Visual } from '@/types/herald'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { toast } from 'sonner'
+import { buildNewsletterHTML } from '@/lib/newsletterBuilder'
 
 const EditionTracker = dynamic(() => import('@/components/editions/EditionTracker'), { ssr: false })
 
@@ -46,6 +47,9 @@ export default function EditionPage() {
   const footerRef = useRef<{ flush: () => Promise<void> }>(null)
   const dealsEditorRef = useRef<{ flush: () => Promise<void> }>(null)
 
+  const [dealsState, setDealsState] = useState<{ supply: string[]; demand: string[] }>({ supply: [], demand: [] })
+  const [liveHtml, setLiveHtml] = useState<string>('')
+
   function parseIssue(data: Record<string, unknown>): NewsletterIssue {
     const sections = typeof data.sections === 'string'
       ? (() => { try { return JSON.parse(data.sections as string) } catch { return [] } })()
@@ -77,9 +81,36 @@ export default function EditionPage() {
     return () => { supabase.removeChannel(channel) }
   }, [id])
 
+  useEffect(() => {
+    supabase
+      .from('pipeline_state')
+      .select('value')
+      .eq('key', 'newsletter_edition_deals')
+      .single()
+      .then(({ data }) => {
+        if (data?.value) {
+          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+          setDealsState({ supply: parsed.supply || [], demand: parsed.demand || [] })
+        }
+      })
+  }, [])
+
+  useEffect(() => {
+    if (!issue) return
+    buildNewsletterHTML({
+      sections: issue.sections || [],
+      visuals: issue.visuals || [],
+      issueNumber: issue.issue_number,
+      subjectLine: issue.subject_line || '',
+      weekStart: issue.week_start ?? null,
+      deals: dealsState,
+    }).then(setLiveHtml)
+  }, [issue, dealsState])
+
   const copyHTML = async () => {
-    if (!issue?.html_content) { toast.error('No HTML available'); return }
-    await navigator.clipboard.writeText(issue.html_content)
+    const html = liveHtml || issue?.html_content
+    if (!html) { toast.error('No HTML available'); return }
+    await navigator.clipboard.writeText(html)
     toast.success('HTML copied to clipboard')
   }
 
@@ -326,9 +357,9 @@ export default function EditionPage() {
       {/* TAB 1: Preview */}
       {activeTab === 'Preview' && (
         <div className="card overflow-hidden">
-          {issue.html_content ? (
+          {(liveHtml || issue.html_content) ? (
             <iframe
-              srcDoc={issue.html_content}
+              srcDoc={liveHtml || issue.html_content || ''}
               className="w-full border-0"
               style={{ height: '80vh' }}
               title="Newsletter preview"
@@ -401,7 +432,7 @@ export default function EditionPage() {
           )}
 
           {/* Deals — supply and demand lists */}
-          <DealsEditor ref={dealsEditorRef} />
+          <DealsEditor ref={dealsEditorRef} onDealsChanged={setDealsState} />
 
           {/* Footer sign-off */}
           <FooterField
@@ -437,27 +468,28 @@ export default function EditionPage() {
               <div>
                 <h3 className="font-serif text-text-warm mb-1">Export HTML</h3>
                 <p className="text-text-muted text-xs">
-                  {issue.html_content
-                    ? `${issue.html_content.length.toLocaleString()} characters · ${estimateReadTime(issue.html_content)}`
+                  {(liveHtml || issue.html_content)
+                    ? `${(liveHtml || issue.html_content || '').length.toLocaleString()} characters · ${estimateReadTime(liveHtml || issue.html_content || '')}`
                     : 'No HTML available'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 mt-3 sm:mt-0">
                 <button
                   onClick={copyHTML}
-                  disabled={!issue.html_content}
+                  disabled={!(liveHtml || issue.html_content)}
                   className="bg-gold text-bg-primary px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold-light transition-all disabled:opacity-40 min-h-[44px]"
                 >
                   Copy HTML
                 </button>
                 <button
                   onClick={() => {
-                    if (!issue.html_content) return
-                    const blob = new Blob([issue.html_content], { type: 'text/html' })
+                    const html = liveHtml || issue.html_content
+                    if (!html) return
+                    const blob = new Blob([html], { type: 'text/html' })
                     const url = URL.createObjectURL(blob)
                     window.open(url, '_blank')
                   }}
-                  disabled={!issue.html_content}
+                  disabled={!(liveHtml || issue.html_content)}
                   className="border border-gold-muted text-gold px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px]"
                 >
                   Open in Tab
@@ -604,9 +636,12 @@ const FooterField = forwardRef<
 // DealsEditor — reads/writes pipeline_state.newsletter_edition_deals
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-const DealsEditor = forwardRef<{ flush: () => Promise<void> }, {}>(
-  function DealsEditor(_props, ref) {
+interface DealsEditorProps {
+  onDealsChanged?: (deals: { supply: string[]; demand: string[] }) => void
+}
+
+const DealsEditor = forwardRef<{ flush: () => Promise<void> }, DealsEditorProps>(
+  function DealsEditor({ onDealsChanged }, ref) {
     const [supply, setSupply] = useState('')
     const [demand, setDemand] = useState('')
     const [loading, setLoading] = useState(true)
@@ -645,6 +680,7 @@ const DealsEditor = forwardRef<{ flush: () => Promise<void> }, {}>(
         )
       origRef.current = { supply, demand }
       setSaving(false)
+      onDealsChanged?.({ supply: supplyArr, demand: demandArr })
     }
 
     useImperativeHandle(ref, () => ({ flush: doSave }))
