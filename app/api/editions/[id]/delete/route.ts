@@ -12,20 +12,20 @@ export async function DELETE(
 
   const supabase = createServiceClient()
 
-  const { error } = await supabase
-    .from('newsletter_issues')
-    .delete()
-    .eq('id', params.id)
-    .in('status', ['draft', 'generating', 'paused', 'declined'])
-
-  if (error) {
-    return Response.json({ error: error.message }, { status: 500 })
-  }
-
+  // Clear foreign-key references first so the main delete doesn't hit a constraint
   await supabase
     .from('edition_calendar')
     .update({ status: 'future', newsletter_issue_id: null })
     .eq('newsletter_issue_id', params.id)
+
+  const { error } = await supabase
+    .from('newsletter_issues')
+    .delete()
+    .eq('id', params.id)
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 })
+  }
 
   return Response.json({ success: true })
 }

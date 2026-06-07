@@ -258,7 +258,7 @@ export default function EditionPage() {
   }
   if (!issue) return <p className="text-text-muted">Edition not found</p>
 
-  const canDelete = ['draft', 'generating', 'paused', 'declined'].includes(issue.status)
+  const canDelete = true
 
   // Exclude deal/deal_watch (handled by DealsEditor) and footer (its own field).
   const displaySections = (issue.sections || []).filter(s => {
@@ -488,12 +488,16 @@ export default function EditionPage() {
                     if (!html) return
                     const blob = new Blob([html], { type: 'text/html' })
                     const url = URL.createObjectURL(blob)
-                    window.open(url, '_blank')
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `herald-edition-${issue.issue_number}.html`
+                    a.click()
+                    URL.revokeObjectURL(url)
                   }}
                   disabled={!(liveHtml || issue.html_content)}
                   className="border border-gold-muted text-gold px-4 py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gold hover:text-bg-primary transition-all disabled:opacity-40 min-h-[44px]"
                 >
-                  Open in Tab
+                  Download HTML
                 </button>
               </div>
             </div>
