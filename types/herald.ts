@@ -40,6 +40,7 @@ export interface NewsletterIssue {
   sections?: Section[]
   visuals?: Visual[]
   week_start?: string | null
+  edition_date?: string | null
   created_at: string
   updated_at?: string
 }

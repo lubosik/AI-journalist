@@ -31,6 +31,7 @@ export interface BuildParams {
   issueNumber: number
   subjectLine: string
   weekStart?: string | null
+  editionDate?: string | null
   deals?: { supply: string[]; demand: string[] }
 }
 
@@ -81,24 +82,25 @@ function escapeAttr(text: string): string {
 // Week string builder
 // ---------------------------------------------------------------------------
 
-function buildWeekStr(weekStart: string | null | undefined): string {
+function buildWeekStr(weekStart: string | null | undefined, editionDate?: string | null): string {
   const fallback = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
+  // Prefer a specific edition date — show it as "Month Day, Year"
+  const dateStr = editionDate || null
+  if (dateStr) {
+    try {
+      const d = new Date(dateStr)
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+      }
+    } catch { /* fall through */ }
+  }
   if (!weekStart) return fallback
   try {
     const start = new Date(weekStart)
     if (isNaN(start.getTime())) return fallback
-    const end = new Date(start)
-    end.setDate(end.getDate() + 6)
-
-    const startMonth = start.toLocaleString('en-US', { month: 'long' })
-    const endMonth = end.toLocaleString('en-US', { month: 'long' })
+    const month = start.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })
     const year = start.getFullYear()
-
-    if (start.getMonth() === end.getMonth()) {
-      return `${startMonth} ${start.getDate()}–${end.getDate()}, ${year}`
-    } else {
-      return `${startMonth} ${start.getDate()} – ${endMonth} ${end.getDate()}, ${year}`
-    }
+    return `${month} ${year}`
   } catch {
     return fallback
   }
@@ -566,9 +568,9 @@ export function buildPlainText(
 // ---------------------------------------------------------------------------
 
 export async function buildNewsletterHTML(params: BuildParams): Promise<string> {
-  const { sections, visuals, issueNumber, subjectLine, weekStart, deals } = params
+  const { sections, visuals, issueNumber, subjectLine, weekStart, editionDate, deals } = params
 
-  const weekStr = buildWeekStr(weekStart)
+  const weekStr = buildWeekStr(weekStart, editionDate)
 
   // Index sections by id
   const sectionsById: Record<string, Section> = {}

@@ -103,6 +103,7 @@ export default function EditionPage() {
       issueNumber: issue.issue_number,
       subjectLine: issue.subject_line || '',
       weekStart: issue.week_start ?? null,
+      editionDate: issue.edition_date ?? null,
       deals: dealsState,
     }).then(setLiveHtml)
   }, [issue, dealsState])
