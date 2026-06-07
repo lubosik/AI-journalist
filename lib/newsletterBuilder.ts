@@ -578,6 +578,10 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
     if (s.id) sectionsById[s.id] = s
   }
 
+  // Sections to skip when rendering extras (system / non-content ids)
+  const SKIP_IDS = new Set(['footer', 'deal', 'deal_watch'])
+  const FIXED_IDS = new Set(SECTION_ORDER.map(([sid]) => sid))
+
   // Build a placement index: placement_key -> Visual.
   // Only index visuals that have a real URL — skip failed generation placeholders.
   // Supported placements:
@@ -592,13 +596,20 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
 
   const headerImageUrl = visualsByPlacement['top']?.url ?? null
 
-  // Build TOC from fixed order, only sections that have data
-  const tocSections: Array<{ id: string; title?: string }> = []
-  for (const [sid, defaultTitle] of SECTION_ORDER) {
+  // Build full render order: fixed sections first, then any extras in DB order
+  const allRenderSections: Array<{ id: string; title: string; bg: string }> = []
+  for (const [sid, defaultTitle, bgColor] of SECTION_ORDER) {
     if (sectionsById[sid]) {
-      tocSections.push({ id: sid, title: sectionsById[sid].title || defaultTitle })
+      allRenderSections.push({ id: sid, title: sectionsById[sid].title || defaultTitle, bg: bgColor })
     }
   }
+  for (const s of sections) {
+    if (!s.id || FIXED_IDS.has(s.id) || SKIP_IDS.has(s.id)) continue
+    allRenderSections.push({ id: s.id, title: s.title || s.id, bg: '#ffffff' })
+  }
+
+  // Build TOC only when there are more than 3 renderable sections
+  const tocSections = allRenderSections.map(s => ({ id: s.id, title: s.title }))
 
   const parts: string[] = []
 
@@ -610,13 +621,11 @@ export async function buildNewsletterHTML(params: BuildParams): Promise<string> 
     parts.push(renderContents(tocSections))
   }
 
-  // 3. Sections in fixed editorial order.  After each section, inject any
-  //    visual whose placement is "after_<section_id>".
-  for (const [sid, defaultTitle, bgColor] of SECTION_ORDER) {
+  // 3. All sections in render order. After each, inject any after_<id> visual.
+  for (const { id: sid, title, bg: bgColor } of allRenderSections) {
     const sectionData = sectionsById[sid]
     if (!sectionData) continue
 
-    const title = sectionData.title || defaultTitle
     const content = sectionData.content || ''
 
     if (sid === 'tldr') {
